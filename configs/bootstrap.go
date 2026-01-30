@@ -1,21 +1,35 @@
 package configs
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type App struct {
-	DbPool  *pgxpool.Pool
-	Router  *chi.Mux
+	Router  chi.Router
 	Repo    *RepositoryConfigs
 	Service *ServiceConfigs
 }
 
-func NewApp(dbString string, r *chi.Mux) *App {
-	return &App{}
+func NewApp(ctx context.Context, dbString string, r chi.Router) *App {
+
+	pool, err := setUpDatabase(ctx, dbString)
+	if err != nil {
+		panic(err)
+	}
+
+	repoCfg := NewRepositoryConfigs(pool)
+	serviceCfg := NewServiceConfigs(repoCfg)
+
+	SetupRouter(r, serviceCfg)
+
+	return &App{
+		Router:  r,
+		Repo:    repoCfg,
+		Service: serviceCfg,
+	}
 }
 
 func (a *App) Run() {

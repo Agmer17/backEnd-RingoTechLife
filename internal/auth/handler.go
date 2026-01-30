@@ -52,7 +52,7 @@ func (h *AuthHandler) SignupHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *AuthHandler) SetUpRoute(router *chi.Mux) {
+func (h *AuthHandler) SetUpRoute(router chi.Router) {
 
 	router.Route("/auth", func(r chi.Router) {
 		r.Use(httprate.Limit(

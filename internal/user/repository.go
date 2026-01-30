@@ -19,13 +19,18 @@ type UserRepositoryInterface interface {
 	IsUserExists(ctx context.Context, email string, phone string) (bool, error)
 }
 
-type userRepositoryImpl struct {
+type UserRepositoryImpl struct {
 	db *pgxpool.Pool
 }
 
-func (r *userRepositoryImpl) Create(
+func NewUserRepository(pool *pgxpool.Pool) *UserRepositoryImpl {
+	return &UserRepositoryImpl{
+		db: pool,
+	}
+}
+
+func (r *UserRepositoryImpl) Create(
 	ctx context.Context,
-	tx pgx.Tx,
 	user *model.User,
 ) (*model.User, error) {
 
@@ -52,7 +57,7 @@ func (r *userRepositoryImpl) Create(
 	return user, nil
 }
 
-func (r *userRepositoryImpl) GetByID(
+func (r *UserRepositoryImpl) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
 ) (model.User, error) {
@@ -83,7 +88,7 @@ func (r *userRepositoryImpl) GetByID(
 	return u, nil
 }
 
-func (r *userRepositoryImpl) Update(
+func (r *UserRepositoryImpl) Update(
 	ctx context.Context,
 	user *model.User,
 ) (*model.User, error) {
@@ -117,10 +122,10 @@ func (r *userRepositoryImpl) Update(
 	return user, nil
 }
 
-func (r *userRepositoryImpl) Delete(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+func (r *UserRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM users WHERE id = $1`
 
-	res, err := tx.Exec(ctx, query, id)
+	res, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -132,7 +137,7 @@ func (r *userRepositoryImpl) Delete(ctx context.Context, tx pgx.Tx, id uuid.UUID
 	return nil
 }
 
-func (r *userRepositoryImpl) GetByEmailOrPhone(
+func (r *UserRepositoryImpl) GetByEmailOrPhone(
 	ctx context.Context,
 	email string,
 	phoneNumber string,
@@ -164,7 +169,7 @@ func (r *userRepositoryImpl) GetByEmailOrPhone(
 	return u, nil
 }
 
-func (r *userRepositoryImpl) IsUserExists(
+func (r *UserRepositoryImpl) IsUserExists(
 	ctx context.Context,
 	email string,
 	phone string,

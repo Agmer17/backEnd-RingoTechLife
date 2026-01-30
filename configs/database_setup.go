@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func SetUpDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
+func setUpDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		return nil, err

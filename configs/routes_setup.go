@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"backEnd-RingoTechLife/internal/auth"
 	"backEnd-RingoTechLife/internal/common"
 	"encoding/json"
 	"log"
@@ -13,9 +14,12 @@ import (
 )
 
 type RoutesHandler struct {
+	AuthHandler *auth.AuthHandler
 }
 
-func NewRouter(r *chi.Mux) *RoutesHandler {
+func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
+
+	authHandler := auth.NewAuthHandler(svcCfg.AuthService)
 
 	r.Use(httprate.Limit(
 		150,
@@ -39,5 +43,10 @@ func NewRouter(r *chi.Mux) *RoutesHandler {
 			NoColor: false}))
 
 	r.Use(middleware.Recoverer)
+
+	r.Route("/api", func(r chi.Router) {
+		authHandler.SetUpRoute(r)
+
+	})
 	return &RoutesHandler{}
 }
