@@ -5,10 +5,10 @@ import (
 	"net/http"
 )
 
-func JSONError(w http.ResponseWriter, status int, message string) {
+func JSONError(w http.ResponseWriter, status int, message any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": message,
 	})
 }

@@ -2,13 +2,22 @@ package auth
 
 import (
 	"backEnd-RingoTechLife/internal/common"
+	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/user"
 	"backEnd-RingoTechLife/pkg"
 	"context"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+const SevenDays = 7 * 24 * 60 * 60
+
+type SignupResponse struct {
+	FullName  string    `json:"full_name"`
+	CreatedAt time.Time `json:"created_at"`
+}
 
 type AuthService struct {
 	UserService *user.UserService
@@ -23,50 +32,77 @@ func NewAuthService(userSvc *user.UserService) *AuthService {
 }
 
 // set cookie
-func (a *AuthService) Login(ctx context.Context, req LoginRequest, w http.ResponseWriter) *common.ErrorResponse {
+func (a *AuthService) Login(ctx context.Context, req LoginRequest, w http.ResponseWriter) (common.SuccessResponse, *common.ErrorResponse) {
 
 	exist, err := a.UserService.ExistByEmailOrPhone(ctx, req.EmailOrPhone, req.EmailOrPhone)
 
 	if err != nil {
-		return common.NewErrorResponse(500, "gagal mengambil data ke database : "+err.Error())
+		return common.SuccessResponse{}, common.NewErrorResponse(500, "gagal mengambil data ke database : "+err.Error())
 	}
 
 	if !exist {
-		return common.NewErrorResponse(400, "user tidak ditemukan!")
+		return common.SuccessResponse{}, common.NewErrorResponse(400, "user tidak ditemukan!")
 	}
 
 	userData, getErr := a.UserService.GetByEmailOrPhone(ctx, req.EmailOrPhone, req.EmailOrPhone)
 
 	if getErr != nil {
-		return getErr
+		return common.SuccessResponse{}, getErr
 	}
 
 	hashErr := bcrypt.CompareHashAndPassword([]byte(userData.Password), []byte(req.Password))
 
 	if hashErr != nil {
-		return common.NewErrorResponse(401, "password salah!")
+		return common.SuccessResponse{}, common.NewErrorResponse(401, "password salah!")
 	}
 
-	token, err := pkg.GenerateToken(
+	refreshToken, err := pkg.GenerateTokenNoRole(
 		userData.ID,
-		userData.Role,
-		60,
+		168,
 	)
 	if err != nil {
-		return common.NewErrorResponse(500, "gagal generate token")
+		return common.SuccessResponse{}, common.NewErrorResponse(500, "gagal generate token")
 	}
 
-	// 🍪 SET COOKIE
+	token, err := pkg.GenerateToken(userData.ID, userData.Role, 60)
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
-		Value:    token,
+		Value:    refreshToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // WAJIB true kalau https
+		Secure:   false,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   60 * 36000,
+		MaxAge:   SevenDays,
 	})
 
-	return nil
+	return common.SuccessResponse{
+		Message: "Berhasil login!",
+		Data: map[string]string{
+			"id":           userData.ID.String(),
+			"role":         userData.Role,
+			"access_token": token,
+		},
+	}, nil
+
+}
+
+func (a *AuthService) SignUp(ctx context.Context, req dto.CreateUserRequest) (common.SuccessResponse, *common.ErrorResponse) {
+
+	data, err := a.UserService.Create(ctx, req)
+
+	if err != nil {
+		return common.SuccessResponse{}, err
+	}
+
+	successResponse := common.SuccessResponse{
+		Message: "Berhasil membuat akun!",
+		Data: SignupResponse{
+			FullName:  data.FullName,
+			CreatedAt: data.CreatedAt,
+		},
+	}
+
+	return successResponse, nil
 
 }

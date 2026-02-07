@@ -2,6 +2,7 @@ package auth
 
 import (
 	"backEnd-RingoTechLife/internal/common"
+	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
+	"github.com/go-playground/validator/v10"
 )
 
 type LoginRequest struct {
@@ -18,11 +20,13 @@ type LoginRequest struct {
 
 type AuthHandler struct {
 	AuthService *AuthService
+	Validator   *validator.Validate
 }
 
-func NewAuthHandler(svc *AuthService) *AuthHandler {
+func NewAuthHandler(svc *AuthService, validator *validator.Validate) *AuthHandler {
 	return &AuthHandler{
 		AuthService: svc,
+		Validator:   validator,
 	}
 }
 
@@ -37,18 +41,41 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.AuthService.Login(reqCtx, req, w)
+	data, err := h.AuthService.Login(reqCtx, req, w)
 
 	if err != nil {
 		pkg.JSONError(w, err.Code, err.Message)
 		return
 	}
 
-	pkg.JSONSuccess(w, 200, "Berhasil nih bang!", "woi")
+	pkg.JSONSuccess(w, 200, data.Message, data.Data)
 
 }
 
 func (h *AuthHandler) SignupHandler(w http.ResponseWriter, r *http.Request) {
+
+	var req dto.CreateUserRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		pkg.JSONError(w, 400, "Harap isi data dengan benar!")
+		return
+	}
+
+	if err := h.Validator.Struct(req); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	successRes, err := h.AuthService.SignUp(r.Context(), req)
+
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, successRes.Message, successRes.Data)
 
 }
 

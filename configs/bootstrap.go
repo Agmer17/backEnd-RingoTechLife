@@ -1,7 +1,9 @@
 package configs
 
 import (
+	"backEnd-RingoTechLife/internal/storage"
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -20,8 +22,9 @@ func NewApp(ctx context.Context, dbString string, r chi.Router) *App {
 		panic(err)
 	}
 
+	serverStorage := storage.NewFileServerStorage()
 	repoCfg := NewRepositoryConfigs(pool)
-	serviceCfg := NewServiceConfigs(repoCfg)
+	serviceCfg := NewServiceConfigs(repoCfg, serverStorage)
 
 	SetupRouter(r, serviceCfg)
 
@@ -33,5 +36,7 @@ func NewApp(ctx context.Context, dbString string, r chi.Router) *App {
 }
 
 func (a *App) Run() {
+	fmt.Println("Server berjalan di port 80")
 	http.ListenAndServe(":80", a.Router)
+
 }

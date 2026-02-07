@@ -3,6 +3,7 @@ package user
 import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -16,7 +17,9 @@ type UserRepositoryInterface interface {
 	GetByEmailOrPhone(ctx context.Context, email string, phoneNumber string) (model.User, error)
 	Update(ctx context.Context, user *model.User) (*model.User, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	IsUserExists(ctx context.Context, email string, phone string) (bool, error)
+	IsUserExistsById(ctx context.Context, id uuid.UUID) (bool, model.User, error)
+	IsUserExistsByEmailOrPhone(ctx context.Context, email string, phone string, excludId *uuid.UUID) (bool, error)
+	GetAllUsers(ctx context.Context) ([]model.User, error)
 }
 
 type UserRepositoryImpl struct {
@@ -169,25 +172,132 @@ func (r *UserRepositoryImpl) GetByEmailOrPhone(
 	return u, nil
 }
 
-func (r *UserRepositoryImpl) IsUserExists(
+func (r *UserRepositoryImpl) IsUserExistsByEmailOrPhone(
 	ctx context.Context,
 	email string,
 	phone string,
+	excludeID *uuid.UUID,
 ) (bool, error) {
 
-	const query = `
-		SELECT EXISTS (
-			SELECT 1
-			FROM users
-			WHERE email = $1 OR phone_number = $2
-		)
-	`
+	var (
+		query string
+		args  []any
+	)
+
+	if excludeID != nil {
+		query = `
+			SELECT EXISTS (
+				SELECT 1
+				FROM users
+				WHERE (email = $1 OR phone_number = $2)
+				  AND id != $3
+			)
+		`
+		args = []any{email, phone, *excludeID}
+	} else {
+		query = `
+			SELECT EXISTS (
+				SELECT 1
+				FROM users
+				WHERE email = $1 OR phone_number = $2
+			)
+		`
+		args = []any{email, phone}
+	}
 
 	var exists bool
-	err := r.db.QueryRow(ctx, query, email, phone).Scan(&exists)
+	err := r.db.QueryRow(ctx, query, args...).Scan(&exists)
 	if err != nil {
 		return false, err
 	}
 
 	return exists, nil
+}
+
+func (r *UserRepositoryImpl) IsUserExistsById(
+	ctx context.Context,
+	id uuid.UUID,
+) (bool, model.User, error) {
+
+	const query = `
+		SELECT 
+			id,
+			full_name,
+			email,
+			phone_number,
+			password,
+			role,
+			profile_picture,
+			created_at
+		FROM users
+		WHERE id = $1
+		LIMIT 1
+	`
+
+	var user model.User
+
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.FullName,
+		&user.Email,
+		&user.PhoneNumber,
+		&user.Password,
+		&user.Role,
+		&user.ProfilePicture,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, model.User{}, nil
+		}
+		return false, model.User{}, err
+	}
+
+	return true, user, nil
+}
+
+func (r *UserRepositoryImpl) GetAllUsers(
+	ctx context.Context,
+) ([]model.User, error) {
+
+	query := `
+		SELECT id, full_name, email, phone_number, password, role, profile_picture, created_at
+		FROM users
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := make([]model.User, 0)
+
+	for rows.Next() {
+		var u model.User
+
+		err := rows.Scan(
+			&u.ID,
+			&u.FullName,
+			&u.Email,
+			&u.PhoneNumber,
+			&u.Password,
+			&u.Role,
+			&u.ProfilePicture,
+			&u.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		users = append(users, u)
+	}
+
+	// penting: cek error setelah iterasi
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }

@@ -3,6 +3,8 @@ package configs
 import (
 	"backEnd-RingoTechLife/internal/auth"
 	"backEnd-RingoTechLife/internal/common"
+	"backEnd-RingoTechLife/internal/user"
+	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
+	"github.com/go-playground/validator/v10"
 )
 
 type RoutesHandler struct {
@@ -19,10 +22,16 @@ type RoutesHandler struct {
 
 func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 
-	authHandler := auth.NewAuthHandler(svcCfg.AuthService)
+	validator := validator.New()
+	validator.RegisterValidation("phoneID", pkg.PhoneID)
+
+	authHandler := auth.NewAuthHandler(svcCfg.AuthService, validator)
+	userHandler := user.NewUserHandler(svcCfg.UserService, svcCfg.ServerStorage, validator)
+
+	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 
 	r.Use(httprate.Limit(
-		150,
+		200,
 		time.Minute,
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -46,7 +55,10 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 
 	r.Route("/api", func(r chi.Router) {
 		authHandler.SetUpRoute(r)
-
+		userHandler.SetUpRoute(r)
 	})
+
+	r.Handle("/uploads/public/*", http.StripPrefix("/uploads/public/", fileServer))
+
 	return &RoutesHandler{}
 }
