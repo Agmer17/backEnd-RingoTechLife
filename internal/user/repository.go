@@ -41,7 +41,7 @@ func (r *UserRepositoryImpl) Create(
 		INSERT INTO users 
 			(full_name, email, phone_number, password)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at
+		RETURNING id, created_at, role
 	`
 
 	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
@@ -50,7 +50,7 @@ func (r *UserRepositoryImpl) Create(
 			user.Email,
 			user.PhoneNumber,
 			user.Password,
-		).Scan(&user.ID, &user.CreatedAt)
+		).Scan(&user.ID, &user.CreatedAt, &user.Role)
 	})
 
 	if err != nil {

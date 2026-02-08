@@ -2,6 +2,7 @@ package configs
 
 import (
 	"backEnd-RingoTechLife/internal/auth"
+	"backEnd-RingoTechLife/internal/category"
 	"backEnd-RingoTechLife/internal/common"
 	"backEnd-RingoTechLife/internal/user"
 	"backEnd-RingoTechLife/pkg"
@@ -22,11 +23,14 @@ type RoutesHandler struct {
 
 func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 
+	// ======= validator
 	validator := validator.New()
 	validator.RegisterValidation("phoneID", pkg.PhoneID)
+	validator.RegisterValidation("slug", pkg.SlugValidator)
 
 	authHandler := auth.NewAuthHandler(svcCfg.AuthService, validator)
 	userHandler := user.NewUserHandler(svcCfg.UserService, svcCfg.ServerStorage, validator)
+	categoryHandler := category.NewCategoryHandler(svcCfg.CategoryService, validator)
 
 	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 
@@ -56,6 +60,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 	r.Route("/api", func(r chi.Router) {
 		authHandler.SetUpRoute(r)
 		userHandler.SetUpRoute(r)
+		categoryHandler.SetUpRoute(r)
 	})
 
 	r.Handle("/uploads/public/*", http.StripPrefix("/uploads/public/", fileServer))

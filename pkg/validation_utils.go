@@ -1,10 +1,13 @@
 package pkg
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
+
+var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 func validationMessage(e validator.FieldError) string {
 	switch e.Tag() {
@@ -41,4 +44,9 @@ func ValidationErrorsToMap(err error) map[string]string {
 	}
 
 	return errors
+}
+
+func SlugValidator(fl validator.FieldLevel) bool {
+	slug := fl.Field().String()
+	return slugRegex.MatchString(slug)
 }

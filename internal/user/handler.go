@@ -371,7 +371,7 @@ func (h *UserHandler) DeleteUserByIDHandler(w http.ResponseWriter, r *http.Reque
 	// Delete user from database
 	errDelete := h.UserService.Delete(r.Context(), dto.DeleteUserRequest{ID: userID})
 	if errDelete != nil {
-		pkg.JSONError(w, 500, "Gagal menghapus user : "+errDelete.Message)
+		pkg.JSONError(w, errDelete.Code, errDelete.Message)
 		return
 	}
 
@@ -386,6 +386,34 @@ func (h *UserHandler) GetAllUsersHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+}
+
+func (h *UserHandler) AddNewUserHandler(w http.ResponseWriter, r *http.Request) {
+
+	var req dto.CreateUserRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		pkg.JSONError(w, 400, "invalid request body! harap isi data dengan benar!")
+		return
+	}
+
+	if err := h.Validator.Struct(req); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	data, insertErr := h.UserService.Create(r.Context(), req)
+
+	if insertErr != nil {
+		pkg.JSONError(w, insertErr.Code, insertErr.Message)
+		return
+	}
+
+	respData := dto.ModelUserToResponse(data)
+
+	pkg.JSONSuccess(w, 200, "berhasil menambahkan user", respData)
 }
 
 // ==================== SETUP ROUTES ====================
@@ -423,6 +451,7 @@ func (h *UserHandler) SetUpRoute(router chi.Router) {
 			r.Put("/{id}", h.UpdateUserByIDHandler)
 			r.Get("/get-all", h.GetAllUsersHandler)
 			r.Delete("/{id}", h.DeleteUserByIDHandler)
+			r.Post("/add", h.AddNewUserHandler)
 		})
 	})
 }
