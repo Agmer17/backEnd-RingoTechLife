@@ -138,3 +138,15 @@ func (cs *CategoryService) GetBySlug(ctx context.Context, slug string) (model.Ca
 	}
 	return data, nil
 }
+
+func (cs *CategoryService) IsCategoryIdExist(ctx context.Context, id uuid.UUID) (bool, *common.ErrorResponse) {
+
+	exist, err := cs.repository.ExistsById(ctx, id)
+
+	if err != nil {
+		return false, common.NewErrorResponse(500, "gagal mengambil data di datbase!"+err.Error())
+	}
+
+	return exist, nil
+
+}

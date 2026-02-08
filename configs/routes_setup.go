@@ -4,6 +4,7 @@ import (
 	"backEnd-RingoTechLife/internal/auth"
 	"backEnd-RingoTechLife/internal/category"
 	"backEnd-RingoTechLife/internal/common"
+	"backEnd-RingoTechLife/internal/products"
 	"backEnd-RingoTechLife/internal/user"
 	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
+	"github.com/go-playground/form/v4"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -28,9 +30,13 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 	validator.RegisterValidation("phoneID", pkg.PhoneID)
 	validator.RegisterValidation("slug", pkg.SlugValidator)
 
+	// ==== form decoder
+	decoder := form.NewDecoder()
+
 	authHandler := auth.NewAuthHandler(svcCfg.AuthService, validator)
 	userHandler := user.NewUserHandler(svcCfg.UserService, svcCfg.ServerStorage, validator)
 	categoryHandler := category.NewCategoryHandler(svcCfg.CategoryService, validator)
+	productHandler := products.NewProductsHandler(svcCfg.ProductService, decoder, validator)
 
 	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 
@@ -61,6 +67,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 		authHandler.SetUpRoute(r)
 		userHandler.SetUpRoute(r)
 		categoryHandler.SetUpRoute(r)
+		productHandler.SetUpRoute(r)
 	})
 
 	r.Handle("/uploads/public/*", http.StripPrefix("/uploads/public/", fileServer))
