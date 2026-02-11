@@ -34,7 +34,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 	decoder := form.NewDecoder()
 
 	authHandler := auth.NewAuthHandler(svcCfg.AuthService, validator)
-	userHandler := user.NewUserHandler(svcCfg.UserService, svcCfg.ServerStorage, validator)
+	userHandler := user.NewUserHandler(svcCfg.UserService, decoder, validator)
 	categoryHandler := category.NewCategoryHandler(svcCfg.CategoryService, validator)
 	productHandler := products.NewProductsHandler(svcCfg.ProductService, decoder, validator)
 

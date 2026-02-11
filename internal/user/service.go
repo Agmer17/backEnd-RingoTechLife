@@ -7,6 +7,7 @@ import (
 	"backEnd-RingoTechLife/internal/storage"
 	"context"
 	"errors"
+	"mime/multipart"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,6 +15,8 @@ import (
 )
 
 const userFilePlace = "user"
+
+var UnsupportedFileType = errors.New("file tidak didukung!")
 
 type UserService struct {
 	userRepo    UserRepositoryInterface
@@ -123,8 +126,14 @@ func (s *UserService) Update(
 		userData.ProfilePicture = nil
 	}
 
+	var newFname string
+
 	if req.ProfilePicture != nil {
-		userData.ProfilePicture = req.ProfilePicture
+		newFname, err = s.processProfilePics(req.ProfilePicture)
+		if err != nil {
+			return model.User{}, common.NewErrorResponse(400, "gagal menyimpan file! hanya kirim file gambar!")
+		}
+		userData.ProfilePicture = &newFname
 	}
 
 	if req.Password != nil {
@@ -140,7 +149,7 @@ func (s *UserService) Update(
 	updatedUser, err := s.userRepo.Update(ctx, &userData)
 	if err != nil {
 		if req.ProfilePicture != nil {
-			s.FileStorage.DeletePublicFile(*req.ProfilePicture, userFilePlace)
+			s.FileStorage.DeletePublicFile(newFname, userFilePlace)
 		}
 		return model.User{}, common.NewErrorResponse(500, "gagal update user! "+err.Error())
 	}
@@ -217,4 +226,28 @@ func (s *UserService) GetAllUser(ctx context.Context) ([]dto.UserDataResponse, *
 	}
 
 	return respData, nil
+}
+
+func (s *UserService) processProfilePics(f *multipart.FileHeader) (string, error) {
+
+	mimeType, err := s.FileStorage.DetectFileType(f)
+
+	if err != nil {
+		return "", err
+	}
+
+	ext, ok := s.FileStorage.IsTypeSupportted(mimeType)
+
+	if !ok {
+		return "", UnsupportedFileType
+	}
+
+	fname, err := s.FileStorage.SavePublicFile(f, ext, userFilePlace)
+
+	if err != nil {
+		return "", err
+	}
+
+	return fname, nil
+
 }

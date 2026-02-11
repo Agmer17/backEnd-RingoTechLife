@@ -217,6 +217,12 @@ func (storage *FileStorage) DeletePublicFile(fname string, place ...string) {
 
 }
 
+func (storage *FileStorage) DeleteAllPublicFile(fileNames []string, place ...string) {
+	for _, v := range fileNames {
+		storage.DeletePublicFile(v, place...)
+	}
+}
+
 func (storage *FileStorage) GetPathPublicFile(filename string, place ...string) string {
 	parts := []string{
 		storage.Public,

@@ -9,7 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/form/v4"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
+
+const maxFileSize = 4 * 1024 * 1024
 
 type ProductsHandler struct {
 	service   *ProductsService
@@ -51,19 +54,57 @@ func (ph *ProductsHandler) AddNewProductsHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
+	productReq.ProductImages = r.MultipartForm.File["product_images"]
+	for _, fileHeader := range productReq.ProductImages {
+		if fileHeader.Size > maxFileSize {
+			pkg.JSONError(w, 400, "gambar terlalu besar! maksimal 4mb")
+			return
+		}
+	}
+
+	if len(productReq.ProductImages) > 7 || len(productReq.ProductImages) < 1 {
+		pkg.JSONError(w, 400, "minmal 1 dan maksimal 7 gambar")
+		return
+	}
+
 	if err := ph.validator.Struct(productReq); err != nil {
 		pkg.JSONError(w, 400, pkg.ValidationErrorsToMap(err))
 		return
 	}
 
-	data, insertErr := ph.service.Create(r.Context(), productReq)
+	data, savedImages, insertErr := ph.service.Create(r.Context(), productReq)
 
 	if insertErr != nil {
 		pkg.JSONError(w, insertErr.Code, insertErr.Message)
 		return
 	}
 
-	pkg.JSONSuccess(w, 200, "berhasil menambahkan data!", data)
+	rsp := map[string]any{
+		"products_data":   data,
+		"products_images": savedImages,
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil menambahkan data!", rsp)
+
+}
+
+func (ph *ProductsHandler) DeleteProductHandler(w http.ResponseWriter, r *http.Request) {
+
+	idParam := chi.URLParam(r, "id")
+	productId, err := uuid.Parse(idParam)
+	if err != nil {
+		pkg.JSONError(w, 400, "ID tidak valid")
+		return
+	}
+
+	delErr := ph.service.DeleteProducts(r.Context(), productId)
+
+	if delErr != nil {
+		pkg.JSONError(w, delErr.Code, delErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil menghapus data", nil)
 
 }
 
@@ -76,6 +117,7 @@ func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 		r.Group(func(r chi.Router) {
 
 			r.Post("/add", ph.AddNewProductsHandler)
+			r.Delete("/delete/{id}", ph.DeleteProductHandler)
 
 		})
 

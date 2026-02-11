@@ -3,12 +3,20 @@ package products
 import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrProductNotFound = errors.New("product not found")
+var ErrFkTagsConstraint = errors.New("Tag tidak ditemukan!")
+var ErrConflictSlugName = errors.New("Slug sudah tersedia di database!")
+var ErrNameConflict = errors.New("nama produk sudah terdaftar di database! masukan nama lainnnya")
+var ErrConflicSku = errors.New("Sku produk sudah tersedia di database! harap masukan yg lain!")
 
 type ProductRepositoryInterface interface {
 	// Basic CRUD
@@ -79,6 +87,23 @@ func (r *ProductRepositoryImpl) Create(
 	})
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				switch pgErr.ConstraintName {
+				case "products_slug_key":
+					return nil, ErrConflictSlugName
+				case "products_sku_key":
+					return nil, ErrConflicSku
+				}
+			}
+
+			if pgErr.Code == "23503" {
+				return nil, ErrFkTagsConstraint
+			}
+		}
+
 		return nil, fmt.Errorf("create product failed: %w", err)
 	}
 
@@ -227,7 +252,7 @@ func (r *ProductRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error 
 		}
 
 		if res.RowsAffected() == 0 {
-			return fmt.Errorf("product with id %s not found", id)
+			return ErrProductNotFound
 		}
 
 		return nil

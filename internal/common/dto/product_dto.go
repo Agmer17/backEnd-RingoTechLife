@@ -3,6 +3,7 @@ package dto
 import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"encoding/json"
+	"mime/multipart"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ type CreateProductRequest struct {
 	Status         string  `form:"product_status" validate:"required,oneof=draft active inactive out_of_stock"`
 	IsFeatured     *bool   `form:"product_featured" validate:"omitempty"`
 	Weight         *int    `form:"product_weight" validate:"omitempty,min=1"`
+	ProductImages  []*multipart.FileHeader
 }
 
 func NewProductFromCreateRequest(req CreateProductRequest) (model.Product, error) {

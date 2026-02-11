@@ -3,6 +3,7 @@ package configs
 import (
 	"backEnd-RingoTechLife/internal/auth"
 	"backEnd-RingoTechLife/internal/category"
+	"backEnd-RingoTechLife/internal/productimage"
 	"backEnd-RingoTechLife/internal/products"
 	"backEnd-RingoTechLife/internal/storage"
 	"backEnd-RingoTechLife/internal/user"
@@ -21,7 +22,8 @@ func NewServiceConfigs(rcf *RepositoryConfigs, serverStorage *storage.FileStorag
 	userSvc := user.NewUserService(rcf.UserRepository, serverStorage)
 	authSvc := auth.NewAuthService(userSvc)
 	categorySvc := category.NewCategoryService(rcf.CategoryRepository)
-	productSvc := products.NewProductsService(rcf.ProductsRepository)
+	productImageSvc := productimage.NewProductImageService(rcf.ProductImageRepository, serverStorage)
+	productSvc := products.NewProductsService(rcf.ProductsRepository, serverStorage, productImageSvc)
 
 	return &ServiceConfigs{
 		AuthService:     authSvc,

@@ -4,34 +4,34 @@ import (
 	"backEnd-RingoTechLife/internal/common"
 	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/middleware"
-	"backEnd-RingoTechLife/internal/storage"
 	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
+	"github.com/go-playground/form/v4"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
 
 const (
-	maxFileSize = 5 << 20 // 5MB
+	maxFileSize = 10 << 20 // 5MB
 )
 
 type UserHandler struct {
 	UserService *UserService
-	FileStorage *storage.FileStorage
 	Validator   *validator.Validate
+	decoder     *form.Decoder
 }
 
-func NewUserHandler(svc *UserService, fileStorage *storage.FileStorage, validator *validator.Validate) *UserHandler {
+func NewUserHandler(svc *UserService, decode *form.Decoder, validator *validator.Validate) *UserHandler {
 	return &UserHandler{
 		UserService: svc,
-		FileStorage: fileStorage,
 		Validator:   validator,
+		decoder:     decode,
 	}
 }
 
@@ -70,103 +70,23 @@ func (h *UserHandler) UpdateCurrentUserHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	defer r.MultipartForm.RemoveAll()
+
 	var req dto.UpdateUserRequest
 	req.ID = userID
 
-	// Parse text fields
-	if fullName := r.FormValue("full_name"); fullName != "" {
-		if len(fullName) < 3 {
-			pkg.JSONError(w, 400, "Full name minimal 3 karakter")
-			return
-		}
-		req.FullName = &fullName
-	}
-
-	if email := r.FormValue("email"); email != "" {
-		if err := h.Validator.Var(email, "email"); err != nil {
-			pkg.JSONError(w, 400, "Format email tidak valid")
-			return
-		}
-		req.Email = &email
-	}
-
-	if phoneNumber := r.FormValue("phone_number"); phoneNumber != "" {
-		if err := h.Validator.Var(phoneNumber, "phoneID"); err != nil {
-			pkg.JSONError(w, 400, "Format nomor telepon tidak valid")
-			return
-		}
-		req.PhoneNumber = &phoneNumber
-	}
-
-	if password := r.FormValue("password"); password != "" {
-		if len(password) < 8 {
-			pkg.JSONError(w, 400, "Password minimal 8 karakter")
-			return
-		}
-		req.Password = &password
-	}
-
-	if role := r.FormValue("role"); role != "" {
-		pkg.JSONError(w, 401, "UNAUTHORIZED!")
+	if err := h.decoder.Decode(&req, r.MultipartForm.Value); err != nil {
+		fmt.Println(err)
+		pkg.JSONError(w, 400, "form data tidak valid")
 		return
 	}
 
-	var newFileName string
-	// var oldProfilePicture *string
-
-	// Handle file upload
-	file, fileHeader, err := r.FormFile("profile_picture")
-	if err == nil {
-		defer file.Close()
-
-		// Validate file size
-		if fileHeader.Size > maxFileSize {
-			pkg.JSONError(w, 413, "Ukuran file maksimal 5MB")
-			return
-		}
-
-		// Detect and validate mime type
-		mimeType, err := h.FileStorage.DetectFileType(fileHeader)
-		if err != nil {
-			pkg.JSONError(w, 500, "Gagal membaca file")
-			return
-		}
-
-		fileExt, supported := h.FileStorage.IsTypeSupportted(mimeType)
-		if !supported {
-			pkg.JSONError(w, 400, "Format file tidak didukung. Gunakan JPEG, PNG, atau WEBP")
-			return
-		}
-
-		mediaType := h.FileStorage.GetMediaType(mimeType)
-		if mediaType != "IMAGE" {
-			pkg.JSONError(w, 400, "File harus berupa gambar")
-			return
-		}
-
-		// Save new file
-		fileName, err := h.FileStorage.SavePublicFile(fileHeader, fileExt, userFilePlace)
-		if err != nil {
-			pkg.JSONError(w, 500, "Gagal menyimpan file: "+err.Error())
-			return
-		}
-
-		newFileName = fileName
-		req.ProfilePicture = &fileName
-	} else if err != http.ErrMissingFile {
-		pkg.JSONError(w, 400, "Error saat membaca file")
-		return
-	}
+	req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
 
 	// Update user
 	updatedUser, errUpdate := h.UserService.Update(r.Context(), req, userID)
 	if errUpdate != nil {
-		// Rollback: delete new file if service failed
-		if newFileName != "" {
-			h.FileStorage.DeletePublicFile(newFileName, userFilePlace)
-		}
-		pkg.JSONError(w, errUpdate.Code, errUpdate.Message)
-		return
+
 	}
 
 	// Remove password from response
@@ -182,13 +102,6 @@ func (h *UserHandler) DeleteCurrentUserHandler(w http.ResponseWriter, r *http.Re
 		pkg.JSONError(w, 401, "User ID tidak ditemukan")
 		return
 	}
-
-	// // Get user data first to get profile picture
-	// user, errGet := h.UserService.GetByID(r.Context(), userID)
-	// if errGet != nil {
-	// 	pkg.JSONError(w, errGet.Code, errGet.Message)
-	// 	return
-	// }
 
 	// Delete user from database
 	err := h.UserService.Delete(r.Context(), dto.DeleteUserRequest{ID: userID})
@@ -242,115 +155,12 @@ func (h *UserHandler) UpdateUserByIDHandler(w http.ResponseWriter, r *http.Reque
 	var req dto.UpdateUserRequest
 	req.ID = userID
 
-	// Parse text fields
-	if fullName := r.FormValue("full_name"); fullName != "" {
-		if len(fullName) < 3 {
-			pkg.JSONError(w, 400, "Full name minimal 3 karakter")
-			return
-		}
-		req.FullName = &fullName
-	}
-
-	if email := r.FormValue("email"); email != "" {
-		if err := h.Validator.Var(email, "email"); err != nil {
-			pkg.JSONError(w, 400, "Format email tidak valid")
-			return
-		}
-		req.Email = &email
-	}
-
-	if phoneNumber := r.FormValue("phone_number"); phoneNumber != "" {
-		if err := h.Validator.Var(phoneNumber, "phoneID"); err != nil {
-			pkg.JSONError(w, 400, "Format nomor telepon tidak valid")
-			return
-		}
-		req.PhoneNumber = &phoneNumber
-	}
-
-	if password := r.FormValue("password"); password != "" {
-		if len(password) < 8 {
-			pkg.JSONError(w, 400, "Password minimal 8 karakter")
-			return
-		}
-		req.Password = &password
-	}
-
-	if role := r.FormValue("role"); role != "" {
-		if role != "ADMIN" && role != "USER" {
-			pkg.JSONError(w, 400, "Role harus ADMIN atau USER")
-			return
-		}
-		req.Role = &role
-	}
-
-	if deleteImage := r.FormValue("delete_profile_picture"); deleteImage != "" {
-
-		parsed, err := strconv.ParseBool(deleteImage)
-
-		if err != nil {
-			pkg.JSONError(w, 400, "deleted profile picture harus boolean!")
-			return
-		}
-
-		req.DeleteProfilePicture = &parsed
-
-	}
-
-	var newFileName string
-
-	// Handle file upload
-	file, fileHeader, err := r.FormFile("profile_picture")
-	if err == nil {
-		defer file.Close()
-
-		// Validate file size
-		if fileHeader.Size > maxFileSize {
-			pkg.JSONError(w, 413, "Ukuran file maksimal 5MB")
-			return
-		}
-
-		// Detect and validate mime type
-		mimeType, err := h.FileStorage.DetectFileType(fileHeader)
-		if err != nil {
-			pkg.JSONError(w, 500, "Gagal membaca file")
-			return
-		}
-
-		fileExt, supported := h.FileStorage.IsTypeSupportted(mimeType)
-		if !supported {
-			pkg.JSONError(w, 400, "Format file tidak didukung. Gunakan JPEG, PNG, atau WEBP")
-			return
-		}
-
-		mediaType := h.FileStorage.GetMediaType(mimeType)
-		if mediaType != "IMAGE" {
-			pkg.JSONError(w, 400, "File harus berupa gambar")
-			return
-		}
-
-		// Save new file
-		fileName, err := h.FileStorage.SavePublicFile(fileHeader, fileExt, userFilePlace)
-		if err != nil {
-			pkg.JSONError(w, 500, "Gagal menyimpan file: "+err.Error())
-			return
-		}
-
-		newFileName = fileName
-		req.ProfilePicture = &fileName
-	} else if err != http.ErrMissingFile {
-		pkg.JSONError(w, 400, "Error saat membaca file")
-		return
-	}
+	req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
 
 	// Update user
 	updatedUser, errUpdate := h.UserService.Update(r.Context(), req, userID)
 	if errUpdate != nil {
-		// Rollback: delete new file if service failed
-		if newFileName != "" {
-			h.FileStorage.DeletePublicFile(newFileName, userFilePlace)
-		}
-		pkg.JSONError(w, errUpdate.Code, errUpdate.Message)
-		return
+
 	}
 
 	// Remove password from response
