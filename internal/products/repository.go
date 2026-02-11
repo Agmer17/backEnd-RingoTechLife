@@ -3,6 +3,7 @@ package products
 import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -28,7 +29,7 @@ type ProductRepositoryInterface interface {
 
 	// Listing & Filtering
 	GetAllProducts(ctx context.Context) ([]model.Product, error)
-	GetProductsByCategory(ctx context.Context, categoryID uuid.UUID) ([]model.Product, error)
+	GetProductsByCategorySlug(ctx context.Context, categorySlug string) ([]model.Product, error)
 	GetProductsByStatus(ctx context.Context, status string) ([]model.Product, error)
 	GetFeaturedProducts(ctx context.Context) ([]model.Product, error)
 
@@ -115,16 +116,39 @@ func (r *ProductRepositoryImpl) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
 ) (model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		WHERE id = $1
+		SELECT 
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+			p.condition, p.price, p.stock, p.sku, p.specifications, 
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					) ORDER BY pi.display_order
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		WHERE p.id = $1
+		GROUP BY p.id, c.id
 		LIMIT 1
 	`
 
-	var p model.Product
+	var (
+		p          model.Product
+		cat        model.Category
+		imagesJSON []byte
+	)
+
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&p.ID,
 		&p.CategoryID,
@@ -141,30 +165,70 @@ func (r *ProductRepositoryImpl) GetByID(
 		&p.IsFeatured,
 		&p.Weight,
 		&p.CreatedAt,
+		&cat.ID,
+		&cat.Name,
+		&cat.Slug,
+		&cat.Description,
+		&cat.CreatedAt,
+		&imagesJSON,
 	)
 
 	if err != nil {
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Product{}, ErrProductNotFound
+		}
+
 		return model.Product{}, err
 	}
+
+	// Unmarshal images JSON to struct
+	if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+		return model.Product{}, err
+	}
+
+	p.Category = cat
 
 	return p, nil
 }
 
-// GetBySlug retrieves a product by its slug
 func (r *ProductRepositoryImpl) GetBySlug(
 	ctx context.Context,
 	slug string,
 ) (model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		WHERE slug = $1
+		SELECT 
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+			p.condition, p.price, p.stock, p.sku, p.specifications, 
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					) ORDER BY pi.display_order
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		WHERE p.slug = $1
+		GROUP BY p.id, c.id
 		LIMIT 1
 	`
 
-	var p model.Product
+	var (
+		p          model.Product
+		cat        model.Category
+		imagesJSON []byte
+	)
+
 	err := r.pool.QueryRow(ctx, query, slug).Scan(
 		&p.ID,
 		&p.CategoryID,
@@ -181,11 +245,28 @@ func (r *ProductRepositoryImpl) GetBySlug(
 		&p.IsFeatured,
 		&p.Weight,
 		&p.CreatedAt,
+		&cat.ID,
+		&cat.Name,
+		&cat.Slug,
+		&cat.Description,
+		&cat.CreatedAt,
+		&imagesJSON,
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Product{}, ErrProductNotFound
+		}
+
 		return model.Product{}, err
 	}
+
+	// Unmarshal images JSON to struct
+	if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+		return model.Product{}, err
+	}
+
+	p.Category = cat
 
 	return p, nil
 }
@@ -261,16 +342,33 @@ func (r *ProductRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error 
 	return err
 }
 
-// GetAllProducts retrieves all products
 func (r *ProductRepositoryImpl) GetAllProducts(
 	ctx context.Context,
 ) ([]model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		ORDER BY created_at DESC
+		SELECT 
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+			p.condition, p.price, p.stock, p.sku, p.specifications, 
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					) ORDER BY pi.display_order
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		GROUP BY p.id, c.id
+		ORDER BY p.created_at DESC
 	`
 
 	rows, err := r.pool.Query(ctx, query)
@@ -280,8 +378,14 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 	defer rows.Close()
 
 	products := []model.Product{}
+
 	for rows.Next() {
-		var p model.Product
+		var (
+			p          model.Product
+			cat        model.Category
+			imagesJSON []byte
+		)
+
 		err := rows.Scan(
 			&p.ID,
 			&p.CategoryID,
@@ -298,10 +402,24 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
+			&cat.ID,
+			&cat.Name,
+			&cat.Slug,
+			&cat.Description,
+			&cat.CreatedAt,
+			&imagesJSON,
 		)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// Unmarshal images JSON to struct
+		if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+			return nil, err
+		}
+
+		p.Category = cat
 		products = append(products, p)
 	}
 
@@ -309,28 +427,52 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 }
 
 // GetProductsByCategory retrieves products by category ID
-func (r *ProductRepositoryImpl) GetProductsByCategory(
+func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 	ctx context.Context,
-	categoryID uuid.UUID,
+	categorySlug string,
 ) ([]model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		WHERE category_id = $1
-		ORDER BY created_at DESC
+		SELECT 
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+			p.condition, p.price, p.stock, p.sku, p.specifications, 
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					) ORDER BY pi.display_order
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		WHERE c.slug = $1
+		GROUP BY p.id, c.id
+		ORDER BY p.created_at DESC
 	`
 
-	rows, err := r.pool.Query(ctx, query, categoryID)
+	rows, err := r.pool.Query(ctx, query, categorySlug)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	products := []model.Product{}
+
 	for rows.Next() {
-		var p model.Product
+		var (
+			p          model.Product
+			cat        model.Category
+			imagesJSON []byte
+		)
+
 		err := rows.Scan(
 			&p.ID,
 			&p.CategoryID,
@@ -347,28 +489,59 @@ func (r *ProductRepositoryImpl) GetProductsByCategory(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
+			&cat.ID,
+			&cat.Name,
+			&cat.Slug,
+			&cat.Description,
+			&cat.CreatedAt,
+			&imagesJSON,
 		)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// Unmarshal images JSON to struct
+		if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+			return nil, err
+		}
+
+		p.Category = cat
 		products = append(products, p)
 	}
 
 	return products, rows.Err()
 }
 
-// GetProductsByStatus retrieves products by status
 func (r *ProductRepositoryImpl) GetProductsByStatus(
 	ctx context.Context,
 	status string,
 ) ([]model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		WHERE status = $1
-		ORDER BY created_at DESC
+		SELECT 
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+			p.condition, p.price, p.stock, p.sku, p.specifications, 
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					) ORDER BY pi.display_order
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		WHERE p.status = $1
+		GROUP BY p.id, c.id
+		ORDER BY p.created_at DESC
 	`
 
 	rows, err := r.pool.Query(ctx, query, status)
@@ -378,8 +551,14 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 	defer rows.Close()
 
 	products := []model.Product{}
+
 	for rows.Next() {
-		var p model.Product
+		var (
+			p          model.Product
+			cat        model.Category
+			imagesJSON []byte
+		)
+
 		err := rows.Scan(
 			&p.ID,
 			&p.CategoryID,
@@ -396,27 +575,58 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
+			&cat.ID,
+			&cat.Name,
+			&cat.Slug,
+			&cat.Description,
+			&cat.CreatedAt,
+			&imagesJSON,
 		)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// Unmarshal images JSON to struct
+		if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+			return nil, err
+		}
+
+		p.Category = cat
 		products = append(products, p)
 	}
 
 	return products, rows.Err()
 }
 
-// GetFeaturedProducts retrieves all featured products
 func (r *ProductRepositoryImpl) GetFeaturedProducts(
 	ctx context.Context,
 ) ([]model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		WHERE is_featured = true
-		ORDER BY created_at DESC
+		SELECT 
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+			p.condition, p.price, p.stock, p.sku, p.specifications, 
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					) ORDER BY pi.display_order
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		WHERE p.is_featured = true
+		GROUP BY p.id, c.id
+		ORDER BY p.created_at DESC
 	`
 
 	rows, err := r.pool.Query(ctx, query)
@@ -426,8 +636,14 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 	defer rows.Close()
 
 	products := []model.Product{}
+
 	for rows.Next() {
-		var p model.Product
+		var (
+			p          model.Product
+			cat        model.Category
+			imagesJSON []byte
+		)
+
 		err := rows.Scan(
 			&p.ID,
 			&p.CategoryID,
@@ -444,10 +660,24 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
+			&cat.ID,
+			&cat.Name,
+			&cat.Slug,
+			&cat.Description,
+			&cat.CreatedAt,
+			&imagesJSON,
 		)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// Unmarshal images JSON to struct
+		if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+			return nil, err
+		}
+
+		p.Category = cat
 		products = append(products, p)
 	}
 
@@ -615,14 +845,32 @@ func (r *ProductRepositoryImpl) SearchProducts(
 	ctx context.Context,
 	keyword string,
 ) ([]model.Product, error) {
-
 	query := `
-		SELECT id, category_id, name, slug, description, brand, condition,
-		       price, stock, sku, specifications, status, is_featured, weight, created_at
-		FROM products
-		WHERE to_tsvector('indonesian', name) @@ plainto_tsquery('indonesian', $1)
-		ORDER BY created_at DESC
-	`
+        SELECT 
+            p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
+            p.condition, p.price, p.stock, p.sku, p.specifications, 
+            p.status, p.is_featured, p.weight, p.created_at,
+            c.id, c.name, c.slug, c.description, c.created_at,
+            COALESCE(
+                json_agg(
+                    json_build_object(
+                        'id', pi.id,
+                        'product_id', pi.product_id,
+                        'image_url', pi.image_url,
+                        'is_primary', pi.is_primary,
+                        'display_order', pi.display_order,
+                        'created_at', pi.created_at AT TIME ZONE 'UTC'
+                    ) ORDER BY pi.display_order
+                ) FILTER (WHERE pi.id IS NOT NULL),
+                '[]'::json
+            ) as images
+        FROM products p
+        INNER JOIN categories c ON p.category_id = c.id
+        LEFT JOIN product_images pi ON p.id = pi.product_id
+        WHERE to_tsvector('indonesian', p.name) @@ plainto_tsquery('indonesian', $1)
+        GROUP BY p.id, c.id
+        ORDER BY p.created_at DESC
+    `
 
 	rows, err := r.pool.Query(ctx, query, keyword)
 	if err != nil {
@@ -631,8 +879,14 @@ func (r *ProductRepositoryImpl) SearchProducts(
 	defer rows.Close()
 
 	products := []model.Product{}
+
 	for rows.Next() {
-		var p model.Product
+		var (
+			p          model.Product
+			cat        model.Category
+			imagesJSON []byte
+		)
+
 		err := rows.Scan(
 			&p.ID,
 			&p.CategoryID,
@@ -649,10 +903,24 @@ func (r *ProductRepositoryImpl) SearchProducts(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
+			&cat.ID,
+			&cat.Name,
+			&cat.Slug,
+			&cat.Description,
+			&cat.CreatedAt,
+			&imagesJSON,
 		)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// Unmarshal images JSON to struct
+		if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
+			return nil, err
+		}
+
+		p.Category = cat
 		products = append(products, p)
 	}
 

@@ -39,6 +39,8 @@ type Product struct {
 	Status         ProductStatus
 	IsFeatured     bool
 	Weight         *int
+	Images         []ProductImage
+	Category       Category
 	CreatedAt      time.Time
 }
 

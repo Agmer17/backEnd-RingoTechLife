@@ -108,14 +108,73 @@ func (ph *ProductsHandler) DeleteProductHandler(w http.ResponseWriter, r *http.R
 
 }
 
+func (ph *ProductsHandler) GetByIdHandler(w http.ResponseWriter, r *http.Request) {
+
+	param := chi.URLParam(r, "id")
+	productId, err := uuid.Parse(param)
+	if err != nil {
+		pkg.JSONError(w, 400, "Parameter tidak valid!")
+		return
+	}
+
+	data, searchErr := ph.service.GetById(r.Context(), productId)
+
+	if searchErr != nil {
+		pkg.JSONError(w, searchErr.Code, searchErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+
+}
+
+func (ph *ProductsHandler) GetBySlug(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+
+	if slug == "" {
+		pkg.JSONError(w, 400, "slug tidak valid!")
+		return
+	}
+
+	data, err := ph.service.GetBySlug(r.Context(), slug)
+
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+}
+
+func (ph *ProductsHandler) GetByCategory(w http.ResponseWriter, r *http.Request) {
+
+	categoryName := chi.URLParam(r, "cat")
+
+	if categoryName == "" {
+		pkg.JSONError(w, 400, "nama kategory tidak valid!")
+		return
+	}
+
+	data, err := ph.service.GetByCategorySlug(r.Context(), categoryName)
+
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+}
+
 func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 
 	r.Route("/products", func(r chi.Router) {
 
 		r.Get("/get-all", ph.GetAllHandler)
+		r.Get("/id/{id}", ph.GetByIdHandler)
+		r.Get("/slug/{slug}", ph.GetBySlug)
+
+		r.Get("/category/{cat}", ph.GetByCategory)
 
 		r.Group(func(r chi.Router) {
-
 			r.Post("/add", ph.AddNewProductsHandler)
 			r.Delete("/delete/{id}", ph.DeleteProductHandler)
 
