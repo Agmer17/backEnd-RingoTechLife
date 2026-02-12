@@ -80,23 +80,43 @@ func (p *ProductImageService) processImageToServer(ctx context.Context, files []
 	return p.fileStorage.SaveAllPublicFiles(ctx, files, filesExt, productImagePlace)
 }
 
-func (p *ProductImageService) UpdateProductsImage(ctx context.Context, productId uuid.UUID, fUpdate []*multipart.FileHeader, imgIds []uuid.UUID) ([]*model.ProductImage, *common.ErrorResponse) {
+func (p *ProductImageService) UpdateProductsImage(
+	ctx context.Context,
+	productId uuid.UUID,
+	fUpdate []*multipart.FileHeader,
+	imgIds []uuid.UUID,
+) ([]*model.ProductImage, *common.ErrorResponse) {
 
 	if len(fUpdate) != len(imgIds) {
-		return []*model.ProductImage{}, common.NewErrorResponse(400, "jumlah id dan gambar tidak sama! harap masukan data dengan benar")
+		return nil, common.NewErrorResponse(400, "jumlah id dan gambar tidak sama")
 	}
 
 	savedFileNames, err := p.processImageToServer(ctx, fUpdate)
 	if err != nil {
-		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
-		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal menyimpan data di database! "+err.Error())
+		return nil, common.NewErrorResponse(500, err.Error())
 	}
 
-	tmpCurrentImageData, err := p.productImageRepo.GetAllByIDs(ctx, imgIds)
+	currentImages, err := p.productImageRepo.GetAllByIDs(ctx, imgIds)
 	if err != nil {
-		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal mengambil data dari database "+err.Error())
+		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
+		return nil, common.NewErrorResponse(500, err.Error())
 	}
 
-	var tmpUpdatedData []*model.ProductImage = make([]*model.ProductImage, len(tmpCurrentImageData))
+	for i := range currentImages {
 
+		if currentImages[i].ProductID != productId {
+			p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
+			return nil, common.NewErrorResponse(403, "image tidak sesuai product")
+		}
+
+		currentImages[i].ImageURL = savedFileNames[i]
+	}
+
+	updated, err := p.productImageRepo.UpdateBulk(ctx, currentImages)
+	if err != nil {
+		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
+		return nil, common.NewErrorResponse(500, err.Error())
+	}
+
+	return updated, nil
 }
