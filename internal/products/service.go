@@ -130,3 +130,7 @@ func (p *ProductsService) GetByCategorySlug(ctx context.Context, catSlug string)
 	return data, nil
 
 }
+
+func (p *ProductsService) UpdateProducts() {
+
+}

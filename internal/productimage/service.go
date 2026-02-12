@@ -26,26 +26,7 @@ func NewProductImageService(repo *ProductImageRepoImpl, serverStorage *storage.F
 
 func (p *ProductImageService) SaveAllImages(ctx context.Context, files []*multipart.FileHeader, productId uuid.UUID) ([]*model.ProductImage, *common.ErrorResponse) {
 
-	var filesExt []string = make([]string, len(files))
-
-	for i, f := range files {
-
-		mimetype, err := p.fileStorage.DetectFileType(f)
-
-		if err != nil {
-			return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal saat membaca file")
-		}
-
-		ext, ok := p.fileStorage.IsTypeSupportted(mimetype)
-
-		if !ok {
-			return []*model.ProductImage{}, common.NewErrorResponse(400, "format file tidak didukung! harap hanya masukan gambar!")
-		}
-		filesExt[i] = ext
-	}
-
-	savedFileNames, err := p.fileStorage.SaveAllPublicFiles(ctx, files, filesExt, productImagePlace)
-
+	savedFileNames, err := p.processImageToServer(ctx, files)
 	if err != nil {
 		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
 		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal saat menyimpan file ke server "+err.Error())
@@ -73,5 +54,49 @@ func (p *ProductImageService) SaveAllImages(ctx context.Context, files []*multip
 	}
 
 	return saved, nil
+
+}
+
+func (p *ProductImageService) processImageToServer(ctx context.Context, files []*multipart.FileHeader) ([]string, error) {
+
+	var filesExt []string = make([]string, len(files))
+
+	for i, f := range files {
+
+		mimetype, err := p.fileStorage.DetectFileType(f)
+
+		if err != nil {
+			return []string{}, err
+		}
+
+		ext, ok := p.fileStorage.IsTypeSupportted(mimetype)
+
+		if !ok {
+			return []string{}, err
+		}
+		filesExt[i] = ext
+	}
+
+	return p.fileStorage.SaveAllPublicFiles(ctx, files, filesExt, productImagePlace)
+}
+
+func (p *ProductImageService) UpdateProductsImage(ctx context.Context, productId uuid.UUID, fUpdate []*multipart.FileHeader, imgIds []uuid.UUID) ([]*model.ProductImage, *common.ErrorResponse) {
+
+	if len(fUpdate) != len(imgIds) {
+		return []*model.ProductImage{}, common.NewErrorResponse(400, "jumlah id dan gambar tidak sama! harap masukan data dengan benar")
+	}
+
+	savedFileNames, err := p.processImageToServer(ctx, fUpdate)
+	if err != nil {
+		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
+		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal menyimpan data di database! "+err.Error())
+	}
+
+	tmpCurrentImageData, err := p.productImageRepo.GetAllByIDs(ctx, imgIds)
+	if err != nil {
+		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal mengambil data dari database "+err.Error())
+	}
+
+	var tmpUpdatedData []*model.ProductImage = make([]*model.ProductImage, len(tmpCurrentImageData))
 
 }

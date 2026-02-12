@@ -25,6 +25,9 @@ type ProductImageRepoInterface interface {
 	// Bulk operations
 	CreateBulk(ctx context.Context, images []*model.ProductImage) ([]*model.ProductImage, error)
 	DeleteBulk(ctx context.Context, productID uuid.UUID, imageIDs []uuid.UUID) error
+	UpdateBulk(ctx context.Context, images []*model.ProductImage) ([]*model.ProductImage, error)
+
+	GetAllByIDs(ctx context.Context, ids []uuid.UUID) ([]*model.ProductImage, error)
 }
 
 // ProductImageRepoImpl implements ProductImageRepoInterface
@@ -156,6 +159,60 @@ func (r *ProductImageRepoImpl) Update(
 		return nil, fmt.Errorf("failed to update product image: %w", err)
 	}
 	return image, nil
+}
+
+func (r *ProductImageRepoImpl) UpdateBulk(
+	ctx context.Context,
+	images []*model.ProductImage,
+) ([]*model.ProductImage, error) {
+	if len(images) == 0 {
+		return images, nil
+	}
+
+	query := `
+		UPDATE product_images 
+		SET image_url = $1,
+			is_primary = $2,
+			display_order = $3
+		WHERE id = $4
+		RETURNING product_id, created_at
+	`
+
+	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		batch := &pgx.Batch{}
+
+		// Queue semua update
+		for _, image := range images {
+			batch.Queue(query,
+				image.ImageURL,
+				image.IsPrimary,
+				image.DisplayOrder,
+				image.ID,
+			)
+		}
+
+		br := tx.SendBatch(ctx, batch)
+		defer br.Close()
+
+		// Scan hasil satu per satu
+		for _, image := range images {
+			err := br.QueryRow().Scan(
+				&image.ProductID,
+				&image.CreatedAt,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to bulk update product images: %w", err)
+	}
+
+	return images, nil
 }
 
 // Delete removes a product image and reorders remaining images
@@ -334,4 +391,48 @@ func (r *ProductImageRepoImpl) DeleteBulk(
 		return fmt.Errorf("delete bulk product images failed: %w", err)
 	}
 	return nil
+}
+
+func (r *ProductImageRepoImpl) GetAllByIDs(
+	ctx context.Context,
+	ids []uuid.UUID,
+) ([]*model.ProductImage, error) {
+
+	if len(ids) == 0 {
+		return []*model.ProductImage{}, nil
+	}
+
+	query := `
+		SELECT id, product_id, image_url, is_primary, display_order, created_at
+		FROM product_images
+		WHERE id = ANY($1)
+	`
+
+	rows, err := r.db.Query(ctx, query, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var images []*model.ProductImage
+
+	for rows.Next() {
+		var img model.ProductImage
+
+		err := rows.Scan(
+			&img.ID,
+			&img.ProductID,
+			&img.ImageURL,
+			&img.IsPrimary,
+			&img.DisplayOrder,
+			&img.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		images = append(images, &img)
+	}
+
+	return images, nil
 }

@@ -7,9 +7,9 @@ import (
 )
 
 type Category struct {
-	ID          uuid.UUID
-	Name        string
-	Slug        string
-	Description *string
-	CreatedAt   time.Time
+	ID          uuid.UUID `json:"category_id"`
+	Name        string    `json:"category_name"`
+	Slug        string    `json:"category_slug"`
+	Description *string   `json:"category_description"`
+	CreatedAt   time.Time `json:"category_created_at"`
 }

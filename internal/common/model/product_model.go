@@ -25,29 +25,29 @@ const (
 )
 
 type Product struct {
-	ID             uuid.UUID
-	CategoryID     uuid.UUID
-	Name           string
-	Slug           string
-	Description    *string
-	Brand          *string
-	Condition      ProductCondition
-	Price          float64
-	Stock          int
-	SKU            *string
-	Specifications JSONB
-	Status         ProductStatus
-	IsFeatured     bool
-	Weight         *int
-	Images         []ProductImage
-	Category       Category
-	CreatedAt      time.Time
+	ID             uuid.UUID        `json:"product_id"`
+	CategoryID     uuid.UUID        `json:"product_category_id"`
+	Name           string           `json:"product_name"`
+	Slug           string           `json:"product_slug"`
+	Description    *string          `json:"product_description"`
+	Brand          *string          `json:"product_brand"`
+	Condition      ProductCondition `json:"product_condition"`
+	Price          float64          `json:"product_price"`
+	Stock          int              `json:"product_stock"`
+	SKU            *string          `json:"product_sku"`
+	Specifications JSONB            `json:"product_specification"`
+	Status         ProductStatus    `json:"product_status"`
+	IsFeatured     bool             `json:"product_is_featured"`
+	Weight         *int             `json:"product_weight"`
+	Images         []ProductImage   `json:"product_images"`
+	Category       Category         `json:"category"`
+	CreatedAt      time.Time        `json:"product_created_at"`
 }
 
-type JSONB map[string]interface{}
+type JSONB map[string]any
 
 // Scan implements sql.Scanner interface
-func (j *JSONB) Scan(value interface{}) error {
+func (j *JSONB) Scan(value any) error {
 	if value == nil {
 		*j = nil
 		return nil
@@ -58,7 +58,7 @@ func (j *JSONB) Scan(value interface{}) error {
 		return nil
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	err := json.Unmarshal(bytes, &result)
 	*j = result
 	return err

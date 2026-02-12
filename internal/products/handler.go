@@ -13,6 +13,7 @@ import (
 )
 
 const maxFileSize = 4 * 1024 * 1024
+const maxMultipartFormSizse = 20 << 20
 
 type ProductsHandler struct {
 	service   *ProductsService
@@ -39,7 +40,7 @@ func (ph *ProductsHandler) GetAllHandler(w http.ResponseWriter, r *http.Request)
 
 func (ph *ProductsHandler) AddNewProductsHandler(w http.ResponseWriter, r *http.Request) {
 
-	if err := r.ParseMultipartForm(20 << 20); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartFormSizse); err != nil {
 		pkg.JSONError(w, 400, "gagal parse form data")
 		return
 	}
@@ -63,7 +64,7 @@ func (ph *ProductsHandler) AddNewProductsHandler(w http.ResponseWriter, r *http.
 	}
 
 	if len(productReq.ProductImages) > 7 || len(productReq.ProductImages) < 1 {
-		pkg.JSONError(w, 400, "minmal 1 dan maksimal 7 gambar")
+		pkg.JSONError(w, 400, "minmal 1 dan maksimal 7 gambar dalam sekali upload!")
 		return
 	}
 
@@ -164,6 +165,54 @@ func (ph *ProductsHandler) GetByCategory(w http.ResponseWriter, r *http.Request)
 	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
 }
 
+func (ph *ProductsHandler) UpdateProductsHandler(w http.ResponseWriter, r *http.Request) {
+
+	prodId := chi.URLParam(r, "id")
+	if prodId == "" {
+		pkg.JSONError(w, 400, "id tidak valid!")
+		return
+	}
+
+	// todo : convert prodId ke uuid
+
+	if err := r.ParseMultipartForm(maxMultipartFormSizse); err != nil {
+		pkg.JSONError(w, 400, "gagal parse form data "+err.Error())
+		return
+	}
+
+	defer r.MultipartForm.RemoveAll()
+
+	var updateReq dto.UpdateProductsRequest
+
+	if err := ph.decoder.Decode(&updateReq, r.MultipartForm.Value); err != nil {
+		fmt.Println(err)
+		pkg.JSONError(w, 400, "form data tidak valid")
+		return
+	}
+
+	updateReq.NewProductImages = r.MultipartForm.File["new_product_images"]
+	for _, fileHeader := range updateReq.NewProductImages {
+		if fileHeader.Size > maxFileSize {
+			pkg.JSONError(w, 400, "gambar terlalu besar! maksimal 4mb pergambar!")
+			return
+		}
+	}
+
+	if len(updateReq.UpdatedImage) != 0 {
+		updateReq.UpdatedImageFiles = r.MultipartForm.File["updated_image_files"]
+
+		if len(updateReq.UpdatedImage) != len(updateReq.UpdatedImageFiles) {
+			pkg.JSONError(w, 400, "jumlah id dan file tidak sama! harap cek kembali datanya!")
+			return
+		}
+	}
+
+	// ======= debuging =========
+	fmt.Println(updateReq)
+
+	pkg.JSONSuccess(w, 200, "ok", nil)
+}
+
 func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 
 	r.Route("/products", func(r chi.Router) {
@@ -177,6 +226,7 @@ func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			r.Post("/add", ph.AddNewProductsHandler)
 			r.Delete("/delete/{id}", ph.DeleteProductHandler)
+			r.Put("/update/{id}", ph.UpdateProductsHandler)
 
 		})
 
