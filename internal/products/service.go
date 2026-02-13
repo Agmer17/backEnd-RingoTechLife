@@ -193,6 +193,40 @@ func (p *ProductsService) UpdateProducts(ctx context.Context, reqData dto.Update
 	}
 
 	// todo impl delete image
+	if len(reqData.DeletedImage) != 0 {
+
+		if len(reqData.DeletedImage) == len(updatedData.Images) {
+			return model.Product{}, common.NewErrorResponse(400, "tidak bisa menghapus semua gambar! minimal ada sisa satu gambar")
+		}
+
+		var imgUUIDS []uuid.UUID = make([]uuid.UUID, len(reqData.DeletedImage))
+		for _, v := range reqData.DeletedImage {
+			tmpIds, _ := uuid.Parse(v)
+			imgUUIDS = append(imgUUIDS, tmpIds)
+		}
+		fmt.Println(imgUUIDS)
+
+		newData, err := p.productImageService.DeleteImagesByIds(ctx, id, imgUUIDS)
+		if err != nil {
+			return model.Product{}, err
+		}
+
+		updatedData.Images = newData
+
+	}
+
+	// nambah gambar baru
+	if len(reqData.NewProductImages) != 0 {
+
+		result, err := p.productImageService.SaveAllImagesWithDisplayOrd(ctx, reqData.NewProductImages, id, len(updatedData.Images))
+		if err != nil {
+			return model.Product{}, err
+		}
+
+		for _, v := range result {
+			updatedData.Images = append(updatedData.Images, *v)
+		}
+	}
 
 	return *updatedData, nil
 

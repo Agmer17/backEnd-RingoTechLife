@@ -315,82 +315,52 @@ func (r *ProductImageRepoImpl) CreateBulk(
 	return images, nil
 }
 
-// DeleteBulk removes multiple product images and reorders remaining images
 func (r *ProductImageRepoImpl) DeleteBulk(
 	ctx context.Context,
 	productID uuid.UUID,
 	imageIDs []uuid.UUID,
 ) error {
+
 	if len(imageIDs) == 0 {
 		return nil
 	}
 
-	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		queryGetOrders := `
-			SELECT display_order 
-			FROM product_images 
-			WHERE product_id = $1 AND id = ANY($2)
-			ORDER BY display_order ASC
+	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+
+		// 1️⃣ Delete
+		deleteQuery := `
+			DELETE FROM product_images
+			WHERE product_id = $1
+			AND id = ANY($2)
 		`
-		rows, err := tx.Query(ctx, queryGetOrders, productID, imageIDs)
+
+		_, err := tx.Exec(ctx, deleteQuery, productID, imageIDs)
 		if err != nil {
-			return fmt.Errorf("failed to get image orders: %w", err)
-		}
-		defer rows.Close()
-
-		var deletedOrders []int
-		for rows.Next() {
-			var order int
-			if err := rows.Scan(&order); err != nil {
-				return fmt.Errorf("failed to scan order: %w", err)
-			}
-			deletedOrders = append(deletedOrders, order)
-		}
-		rows.Close()
-
-		if len(deletedOrders) == 0 {
-			return fmt.Errorf("no images found to delete")
+			return fmt.Errorf("delete images failed: %w", err)
 		}
 
-		// Step 2: Delete the images
-		queryDelete := `
-			DELETE FROM product_images 
-			WHERE product_id = $1 AND id = ANY($2)
-		`
-		cmdTag, err := tx.Exec(ctx, queryDelete, productID, imageIDs)
-		if err != nil {
-			return fmt.Errorf("failed to delete images: %w", err)
-		}
-		if cmdTag.RowsAffected() == 0 {
-			return fmt.Errorf("no images were deleted")
-		}
-
-		// Step 3: Reorder remaining images
-		// For each remaining image, count how many deleted images had lower order
-		// and reduce its order by that count
-		queryReorder := `
-			UPDATE product_images 
-			SET display_order = display_order - (
-				SELECT COUNT(*) 
-				FROM unnest($2::int[]) AS deleted_order 
-				WHERE deleted_order < product_images.display_order
+		// 2️⃣ Reorder + update primary
+		reorderQuery := `
+			WITH reordered AS (
+				SELECT id,
+					   ROW_NUMBER() OVER (ORDER BY display_order ASC) - 1 AS new_order
+				FROM product_images
+				WHERE product_id = $1
 			)
-			WHERE product_id = $1 
-			AND display_order > $3
+			UPDATE product_images p
+			SET display_order = r.new_order,
+			    is_primary = (r.new_order = 0)
+			FROM reordered r
+			WHERE p.id = r.id;
 		`
-		minDeletedOrder := deletedOrders[0]
-		_, err = tx.Exec(ctx, queryReorder, productID, deletedOrders, minDeletedOrder)
+
+		_, err = tx.Exec(ctx, reorderQuery, productID)
 		if err != nil {
-			return fmt.Errorf("failed to reorder images: %w", err)
+			return fmt.Errorf("reorder failed: %w", err)
 		}
 
 		return nil
 	})
-
-	if err != nil {
-		return fmt.Errorf("delete bulk product images failed: %w", err)
-	}
-	return nil
 }
 
 func (r *ProductImageRepoImpl) GetAllByIDs(

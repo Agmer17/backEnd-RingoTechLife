@@ -214,10 +214,6 @@ func (ph *ProductsHandler) UpdateProductsHandler(w http.ResponseWriter, r *http.
 		}
 	}
 
-	// ======= debuging =========
-	fmt.Println(updateReq)
-	// ++++++++++++++++++++++++++
-
 	data, updateErr := ph.service.UpdateProducts(r.Context(), updateReq, id)
 
 	if updateErr != nil {

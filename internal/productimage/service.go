@@ -57,6 +57,39 @@ func (p *ProductImageService) SaveAllImages(ctx context.Context, files []*multip
 
 }
 
+func (p *ProductImageService) SaveAllImagesWithDisplayOrd(ctx context.Context, files []*multipart.FileHeader, productId uuid.UUID, start int) ([]*model.ProductImage, *common.ErrorResponse) {
+	savedFileNames, err := p.processImageToServer(ctx, files)
+	if err != nil {
+		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
+		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal saat menyimpan file ke server "+err.Error())
+	}
+
+	var imageModel []*model.ProductImage = make([]*model.ProductImage, len(savedFileNames))
+
+	for i, v := range savedFileNames {
+		tmpDisplayOrd := (start + i)
+		tmpModel := model.ProductImage{
+			ProductID:    productId,
+			ImageURL:     v,
+			IsPrimary:    tmpDisplayOrd == 0,
+			DisplayOrder: tmpDisplayOrd,
+		}
+
+		imageModel[i] = &tmpModel
+
+	}
+
+	saved, err := p.productImageRepo.CreateBulk(ctx, imageModel)
+
+	if err != nil {
+		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
+		return []*model.ProductImage{}, common.NewErrorResponse(500, "gagal menyimpan data di database! "+err.Error())
+	}
+
+	return saved, nil
+
+}
+
 func (p *ProductImageService) processImageToServer(ctx context.Context, files []*multipart.FileHeader) ([]string, error) {
 
 	var filesExt []string = make([]string, len(files))
@@ -97,13 +130,13 @@ func (p *ProductImageService) UpdateProductsImage(
 	}
 
 	currentImages, err := p.productImageRepo.GetAllByIDs(ctx, imgIds)
-
 	if err != nil {
 		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
 		return nil, common.NewErrorResponse(500, err.Error())
 	}
 
 	// updated IMAGE DATA ASSIGNMENT FOR BULK UPDATE
+	// curent image jangan diubah biar gak rusak
 	var dataToUpdate []*model.ProductImage = make([]*model.ProductImage, len(currentImages))
 
 	for i, v := range currentImages {
@@ -131,22 +164,36 @@ func (p *ProductImageService) UpdateProductsImage(
 		return nil, common.NewErrorResponse(500, err.Error())
 	}
 
-	p.deleteOldImageFile(currentImages, updated)
+	for _, v := range currentImages {
+		p.fileStorage.DeletePublicFile(v.ImageURL, productImagePlace)
+	}
+
 	return updated, nil
 }
 
-func (p *ProductImageService) deleteOldImageFile(oldImages []model.ProductImage, updated []*model.ProductImage) {
+func (p *ProductImageService) DeleteImagesByIds(ctx context.Context, pId uuid.UUID, idToDelete []uuid.UUID) ([]model.ProductImage, *common.ErrorResponse) {
 
-	updatedMap := make(map[uuid.UUID]*model.ProductImage, len(updated))
-	var tempDeleted []string
-	for _, img := range updated {
-		updatedMap[img.ID] = img
+	oldImage, err := p.productImageRepo.GetAllByIDs(ctx, idToDelete)
+	if err != nil {
+		return []model.ProductImage{}, common.NewErrorResponse(500, "gagal mengambil data di database!")
 	}
 
-	for _, old := range oldImages {
-		if _, ok := updatedMap[old.ID]; ok {
-			tempDeleted = append(tempDeleted, old.ImageURL)
-		}
+	err = p.productImageRepo.DeleteBulk(ctx, pId, idToDelete)
+	if err != nil {
+		return []model.ProductImage{}, common.NewErrorResponse(500, "gagal menghapus data!")
 	}
-	p.fileStorage.DeleteAllPublicFile(tempDeleted, productImagePlace)
+
+	for _, v := range oldImage {
+		p.fileStorage.DeletePublicFile(v.ImageURL, productImagePlace)
+	}
+
+	// todo benerin ini coy!
+	newImages, err := p.productImageRepo.GetByProductID(ctx, pId)
+
+	return newImages, nil
+}
+
+func (p *ProductImageService) DeleteByProducts(ctx context.Context, productId uuid.UUID) *common.ErrorResponse {
+
+	return nil
 }
