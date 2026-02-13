@@ -97,26 +97,56 @@ func (p *ProductImageService) UpdateProductsImage(
 	}
 
 	currentImages, err := p.productImageRepo.GetAllByIDs(ctx, imgIds)
+
 	if err != nil {
 		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
 		return nil, common.NewErrorResponse(500, err.Error())
 	}
 
-	for i := range currentImages {
+	// updated IMAGE DATA ASSIGNMENT FOR BULK UPDATE
+	var dataToUpdate []*model.ProductImage = make([]*model.ProductImage, len(currentImages))
 
-		if currentImages[i].ProductID != productId {
+	for i, v := range currentImages {
+
+		if v.ProductID != productId {
 			p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
-			return nil, common.NewErrorResponse(403, "image tidak sesuai product")
+			return []*model.ProductImage{}, common.NewErrorResponse(400, "id produk dan gambar tidak cocok")
 		}
 
-		currentImages[i].ImageURL = savedFileNames[i]
+		tempModel := &model.ProductImage{
+			ID:           v.ID,
+			ProductID:    v.ProductID,
+			ImageURL:     savedFileNames[i],
+			IsPrimary:    v.IsPrimary,
+			DisplayOrder: v.DisplayOrder,
+			CreatedAt:    v.CreatedAt,
+		}
+		dataToUpdate[i] = tempModel
+
 	}
 
-	updated, err := p.productImageRepo.UpdateBulk(ctx, currentImages)
+	updated, err := p.productImageRepo.UpdateBulk(ctx, dataToUpdate)
 	if err != nil {
 		p.fileStorage.DeleteAllPublicFile(savedFileNames, productImagePlace)
 		return nil, common.NewErrorResponse(500, err.Error())
 	}
 
+	p.deleteOldImageFile(currentImages, updated)
 	return updated, nil
+}
+
+func (p *ProductImageService) deleteOldImageFile(oldImages []model.ProductImage, updated []*model.ProductImage) {
+
+	updatedMap := make(map[uuid.UUID]*model.ProductImage, len(updated))
+	var tempDeleted []string
+	for _, img := range updated {
+		updatedMap[img.ID] = img
+	}
+
+	for _, old := range oldImages {
+		if _, ok := updatedMap[old.ID]; ok {
+			tempDeleted = append(tempDeleted, old.ImageURL)
+		}
+	}
+	p.fileStorage.DeleteAllPublicFile(tempDeleted, productImagePlace)
 }

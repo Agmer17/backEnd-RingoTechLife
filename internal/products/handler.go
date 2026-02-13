@@ -2,6 +2,7 @@ package products
 
 import (
 	"backEnd-RingoTechLife/internal/common/dto"
+	"backEnd-RingoTechLife/internal/middleware"
 	"backEnd-RingoTechLife/pkg"
 	"fmt"
 	"net/http"
@@ -174,6 +175,12 @@ func (ph *ProductsHandler) UpdateProductsHandler(w http.ResponseWriter, r *http.
 	}
 
 	// todo : convert prodId ke uuid
+	id, err := uuid.Parse(prodId)
+
+	if err != nil {
+		pkg.JSONError(w, 400, "id tidak valid!")
+		return
+	}
 
 	if err := r.ParseMultipartForm(maxMultipartFormSizse); err != nil {
 		pkg.JSONError(w, 400, "gagal parse form data "+err.Error())
@@ -209,8 +216,16 @@ func (ph *ProductsHandler) UpdateProductsHandler(w http.ResponseWriter, r *http.
 
 	// ======= debuging =========
 	fmt.Println(updateReq)
+	// ++++++++++++++++++++++++++
 
-	pkg.JSONSuccess(w, 200, "ok", nil)
+	data, updateErr := ph.service.UpdateProducts(r.Context(), updateReq, id)
+
+	if updateErr != nil {
+		pkg.JSONError(w, updateErr.Code, updateErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengupdate data!", data)
 }
 
 func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
@@ -224,6 +239,8 @@ func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 		r.Get("/category/{cat}", ph.GetByCategory)
 
 		r.Group(func(r chi.Router) {
+			r.Use(middleware.AuthMiddleware)
+			r.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
 			r.Post("/add", ph.AddNewProductsHandler)
 			r.Delete("/delete/{id}", ph.DeleteProductHandler)
 			r.Put("/update/{id}", ph.UpdateProductsHandler)

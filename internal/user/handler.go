@@ -255,7 +255,7 @@ func (h *UserHandler) SetUpRoute(router chi.Router) {
 		// Admin endpoints (admin only)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)
-			r.Use(middleware.RoleMiddleware("ADMIN"))
+			r.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
 
 			r.Get("/id/{id}", h.GetUserByIDHandler)
 			r.Put("/{id}", h.UpdateUserByIDHandler)

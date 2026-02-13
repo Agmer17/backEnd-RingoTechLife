@@ -27,7 +27,7 @@ type ProductImageRepoInterface interface {
 	DeleteBulk(ctx context.Context, productID uuid.UUID, imageIDs []uuid.UUID) error
 	UpdateBulk(ctx context.Context, images []*model.ProductImage) ([]*model.ProductImage, error)
 
-	GetAllByIDs(ctx context.Context, ids []uuid.UUID) ([]*model.ProductImage, error)
+	GetAllByIDs(ctx context.Context, ids []uuid.UUID) ([]model.ProductImage, error)
 }
 
 // ProductImageRepoImpl implements ProductImageRepoInterface
@@ -396,10 +396,10 @@ func (r *ProductImageRepoImpl) DeleteBulk(
 func (r *ProductImageRepoImpl) GetAllByIDs(
 	ctx context.Context,
 	ids []uuid.UUID,
-) ([]*model.ProductImage, error) {
+) ([]model.ProductImage, error) {
 
 	if len(ids) == 0 {
-		return []*model.ProductImage{}, nil
+		return []model.ProductImage{}, nil
 	}
 
 	query := `
@@ -414,7 +414,7 @@ func (r *ProductImageRepoImpl) GetAllByIDs(
 	}
 	defer rows.Close()
 
-	var images []*model.ProductImage
+	var images []model.ProductImage
 
 	for rows.Next() {
 		var img model.ProductImage
@@ -431,7 +431,7 @@ func (r *ProductImageRepoImpl) GetAllByIDs(
 			return nil, err
 		}
 
-		images = append(images, &img)
+		images = append(images, img)
 	}
 
 	return images, nil

@@ -316,7 +316,24 @@ func (r *ProductRepositoryImpl) Update(
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to update product: %w", err)
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				switch pgErr.ConstraintName {
+				case "products_slug_key":
+					return nil, ErrConflictSlugName
+				case "products_sku_key":
+					return nil, ErrConflicSku
+				}
+			}
+
+			if pgErr.Code == "23503" {
+				return nil, ErrFkTagsConstraint
+			}
+		}
+
+		return nil, fmt.Errorf("update product failed: %w", err)
 	}
 
 	return product, nil

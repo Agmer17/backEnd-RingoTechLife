@@ -1,6 +1,6 @@
 module backEnd-RingoTechLife
 
-go 1.25.6
+go 1.26.0
 
 require (
 	github.com/go-chi/cors v1.2.2
