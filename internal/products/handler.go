@@ -224,6 +224,24 @@ func (ph *ProductsHandler) UpdateProductsHandler(w http.ResponseWriter, r *http.
 	pkg.JSONSuccess(w, 200, "berhasil mengupdate data!", data)
 }
 
+func (ph *ProductsHandler) GetProductByStatus(w http.ResponseWriter, r *http.Request) {
+	var statusParam string
+	urlQuery := r.URL.Query().Get("status")
+
+	if urlQuery != "" {
+		statusParam = urlQuery
+	} else {
+		statusParam = "active"
+	}
+
+	data, err := ph.service.GetProductByStatus(r.Context(), statusParam)
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data produk!", data)
+}
+
 func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 
 	r.Route("/products", func(r chi.Router) {
@@ -233,6 +251,7 @@ func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 		r.Get("/slug/{slug}", ph.GetBySlug)
 
 		r.Get("/category/{cat}", ph.GetByCategory)
+		r.Get("/get", ph.GetProductByStatus)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)

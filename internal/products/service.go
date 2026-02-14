@@ -75,6 +75,12 @@ func (p *ProductsService) GetAllProducts(ctx context.Context) ([]model.Product, 
 }
 
 func (p *ProductsService) DeleteProducts(ctx context.Context, id uuid.UUID) *common.ErrorResponse {
+	// delete file nya dulu!
+	// abis itu delete cascade
+	delErr := p.productImageService.DeleteByProducts(ctx, id)
+	if delErr != nil {
+		return delErr
+	}
 
 	err := p.repo.Delete(ctx, id)
 	if err != nil {
@@ -229,6 +235,19 @@ func (p *ProductsService) UpdateProducts(ctx context.Context, reqData dto.Update
 	}
 
 	return *updatedData, nil
+
+}
+
+func (p *ProductsService) GetProductByStatus(ctx context.Context, status string) ([]model.Product, *common.ErrorResponse) {
+
+	data, err := p.repo.GetProductsByStatus(ctx, status)
+
+	if err != nil {
+		fmt.Println(err)
+		return []model.Product{}, common.NewErrorResponse(500, "gagal mengambil data di database!")
+	}
+
+	return data, nil
 
 }
 

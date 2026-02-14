@@ -195,5 +195,16 @@ func (p *ProductImageService) DeleteImagesByIds(ctx context.Context, pId uuid.UU
 
 func (p *ProductImageService) DeleteByProducts(ctx context.Context, productId uuid.UUID) *common.ErrorResponse {
 
+	// delete aja productnya nanti gambarnya ikut ilang
+	// soalnya kan cascade!
+	oldImage, err := p.productImageRepo.GetByProductID(ctx, productId)
+	if err != nil {
+		return common.NewErrorResponse(500, "gagal mengambil data di database!")
+	}
+	var imgToDelete []string = make([]string, len(oldImage))
+	for i, v := range oldImage {
+		imgToDelete[i] = v.ImageURL
+	}
+	p.fileStorage.DeleteAllPublicFile(imgToDelete, productImagePlace)
 	return nil
 }
