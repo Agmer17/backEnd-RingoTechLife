@@ -95,32 +95,33 @@ func (p *ProductsService) DeleteProducts(ctx context.Context, id uuid.UUID) *com
 	return nil
 }
 
-func (p *ProductsService) GetById(ctx context.Context, id uuid.UUID) (model.Product, *common.ErrorResponse) {
+// ini get detail sama reviewnya!
+func (p *ProductsService) GetById(ctx context.Context, id uuid.UUID) (dto.ProductDetailResponse, *common.ErrorResponse) {
 
-	data, err := p.repo.GetByID(ctx, id)
+	data, err := p.repo.GetDetailByID(ctx, id)
 
 	if err != nil {
 
 		if errors.Is(err, ErrProductNotFound) {
-			return model.Product{}, common.NewErrorResponse(404, "produk tidak ditemukan!")
+			return dto.ProductDetailResponse{}, common.NewErrorResponse(404, "produk tidak ditemukan!")
 		}
 
-		return model.Product{}, common.NewErrorResponse(500, "gagal mengambil data di database! "+err.Error())
+		return dto.ProductDetailResponse{}, common.NewErrorResponse(500, "gagal mengambil data di database! "+err.Error())
 	}
 
 	return data, nil
 
 }
 
-func (p *ProductsService) GetBySlug(ctx context.Context, slug string) (model.Product, *common.ErrorResponse) {
+func (p *ProductsService) GetBySlug(ctx context.Context, slug string) (dto.ProductDetailResponse, *common.ErrorResponse) {
 
 	data, err := p.repo.GetBySlug(ctx, slug)
 
 	if err != nil {
 		if errors.Is(err, ErrProductNotFound) {
-			return model.Product{}, common.NewErrorResponse(404, "produk tidak ditemukan!")
+			return dto.ProductDetailResponse{}, common.NewErrorResponse(404, "produk tidak ditemukan!")
 		}
-		return model.Product{}, common.NewErrorResponse(500, "gagal mengambil data dari database! "+err.Error())
+		return dto.ProductDetailResponse{}, common.NewErrorResponse(500, "gagal mengambil data dari database! "+err.Error())
 	}
 
 	return data, nil

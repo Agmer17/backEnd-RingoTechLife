@@ -46,6 +46,27 @@ type UpdateProductsRequest struct {
 	UpdatedImageFiles []*multipart.FileHeader
 }
 
+type ProductDetailResponse struct {
+	ID             uuid.UUID              `json:"product_id"`
+	CategoryID     uuid.UUID              `json:"product_category_id"`
+	Name           string                 `json:"product_name"`
+	Slug           string                 `json:"product_slug"`
+	Description    *string                `json:"product_description"`
+	Brand          *string                `json:"product_brand"`
+	Condition      model.ProductCondition `json:"product_condition"`
+	Price          float64                `json:"product_price"`
+	Stock          int                    `json:"product_stock"`
+	SKU            *string                `json:"product_sku"`
+	Specifications model.JSONB            `json:"product_specification"`
+	Status         model.ProductStatus    `json:"product_status"`
+	IsFeatured     bool                   `json:"product_is_featured"`
+	Weight         *int                   `json:"product_weight"`
+	Images         []model.ProductImage   `json:"product_images"`
+	Category       model.Category         `json:"category"`
+	CreatedAt      time.Time              `json:"product_created_at"`
+	Reviews        []ReviewDetail         `json:"reviews"` // tambah ini
+}
+
 func NewProductFromCreateRequest(req CreateProductRequest) (model.Product, error) {
 	var specs model.JSONB
 	if req.Specifications != nil && *req.Specifications != "" {

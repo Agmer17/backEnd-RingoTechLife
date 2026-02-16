@@ -1,6 +1,7 @@
 package products
 
 import (
+	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
 	"encoding/json"
@@ -23,7 +24,8 @@ type ProductRepositoryInterface interface {
 	// Basic CRUD
 	Create(ctx context.Context, product *model.Product) (*model.Product, error)
 	GetByID(ctx context.Context, id uuid.UUID) (model.Product, error)
-	GetBySlug(ctx context.Context, slug string) (model.Product, error)
+	GetDetailByID(ctx context.Context, id uuid.UUID) (dto.ProductDetailResponse, error)
+	GetBySlug(ctx context.Context, slug string) (dto.ProductDetailResponse, error)
 	Update(ctx context.Context, product *model.Product) (*model.Product, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 
@@ -62,8 +64,8 @@ func (r *ProductRepositoryImpl) Create(
 ) (*model.Product, error) {
 
 	query := `
-		INSERT INTO products 
-			(category_id, name, slug, description, brand, condition, 
+		INSERT INTO products
+			(category_id, name, slug, description, brand, condition,
 			 price, stock, sku, specifications, status, is_featured, weight)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, created_at
@@ -111,15 +113,117 @@ func (r *ProductRepositoryImpl) Create(
 	return product, nil
 }
 
+func (r *ProductRepositoryImpl) GetDetailByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (dto.ProductDetailResponse, error) {
+	query := `
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
+			p.status, p.is_featured, p.weight, p.created_at,
+			c.id, c.name, c.slug, c.description, c.created_at,
+			COALESCE(
+				json_agg(
+					DISTINCT jsonb_build_object(
+						'id', pi.id,
+						'product_id', pi.product_id,
+						'image_url', pi.image_url,
+						'is_primary', pi.is_primary,
+						'display_order', pi.display_order,
+						'created_at', pi.created_at AT TIME ZONE 'UTC'
+					)
+				) FILTER (WHERE pi.id IS NOT NULL),
+				'[]'::json
+			) as images,
+			COALESCE(
+				json_agg(
+					DISTINCT jsonb_build_object(
+						'review_id', rv.id,
+						'review_product_id', rv.product_id,
+						'review_rating', rv.rating,
+						'review_comment', rv.comment,
+						'review_created_at', rv.created_at AT TIME ZONE 'UTC',
+						'user', jsonb_build_object(
+							'user_id', u.id,
+							'user_fullname', u.full_name,
+							'user_profile_picture', u.profile_picture
+						)
+					)
+				) FILTER (WHERE rv.id IS NOT NULL),
+				'[]'::json
+			) as reviews
+		FROM products p
+		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN product_images pi ON p.id = pi.product_id
+		LEFT JOIN reviews rv ON p.id = rv.product_id
+		LEFT JOIN users u ON rv.user_id = u.id
+		WHERE p.id = $1
+		GROUP BY p.id, c.id
+		LIMIT 1
+	`
+
+	var (
+		product     dto.ProductDetailResponse
+		cat         model.Category
+		imagesJSON  []byte
+		reviewsJSON []byte
+	)
+
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&product.ID,
+		&product.CategoryID,
+		&product.Name,
+		&product.Slug,
+		&product.Description,
+		&product.Brand,
+		&product.Condition,
+		&product.Price,
+		&product.Stock,
+		&product.SKU,
+		&product.Specifications,
+		&product.Status,
+		&product.IsFeatured,
+		&product.Weight,
+		&product.CreatedAt,
+		&cat.ID,
+		&cat.Name,
+		&cat.Slug,
+		&cat.Description,
+		&cat.CreatedAt,
+		&imagesJSON,
+		&reviewsJSON,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return dto.ProductDetailResponse{}, ErrProductNotFound
+		}
+		return dto.ProductDetailResponse{}, err
+	}
+
+	if err := json.Unmarshal(imagesJSON, &product.Images); err != nil {
+		return dto.ProductDetailResponse{}, fmt.Errorf("unmarshal images failed: %w", err)
+	}
+
+	if err := json.Unmarshal(reviewsJSON, &product.Reviews); err != nil {
+		return dto.ProductDetailResponse{}, fmt.Errorf("unmarshal reviews failed: %w", err)
+	}
+
+	product.Category = cat
+
+	return product, nil
+}
+
 // GetByID retrieves a product by its ID
 func (r *ProductRepositoryImpl) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
 ) (model.Product, error) {
 	query := `
-		SELECT 
-			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-			p.condition, p.price, p.stock, p.sku, p.specifications, 
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
 			p.status, p.is_featured, p.weight, p.created_at,
 			c.id, c.name, c.slug, c.description, c.created_at,
 			COALESCE(
@@ -195,80 +299,103 @@ func (r *ProductRepositoryImpl) GetByID(
 func (r *ProductRepositoryImpl) GetBySlug(
 	ctx context.Context,
 	slug string,
-) (model.Product, error) {
+) (dto.ProductDetailResponse, error) {
 	query := `
-		SELECT 
-			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-			p.condition, p.price, p.stock, p.sku, p.specifications, 
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
 			p.status, p.is_featured, p.weight, p.created_at,
 			c.id, c.name, c.slug, c.description, c.created_at,
 			COALESCE(
 				json_agg(
-					json_build_object(
+					DISTINCT jsonb_build_object(
 						'id', pi.id,
 						'product_id', pi.product_id,
 						'image_url', pi.image_url,
 						'is_primary', pi.is_primary,
 						'display_order', pi.display_order,
 						'created_at', pi.created_at AT TIME ZONE 'UTC'
-					) ORDER BY pi.display_order
+					)
 				) FILTER (WHERE pi.id IS NOT NULL),
 				'[]'::json
-			) as images
+			) as images,
+			COALESCE(
+				json_agg(
+					DISTINCT jsonb_build_object(
+						'review_id', rv.id,
+						'review_product_id', rv.product_id,
+						'review_rating', rv.rating,
+						'review_comment', rv.comment,
+						'review_created_at', rv.created_at AT TIME ZONE 'UTC',
+						'user', jsonb_build_object(
+							'user_id', u.id,
+							'user_fullname', u.full_name,
+							'user_profile_picture', u.profile_picture
+						)
+					)
+				) FILTER (WHERE rv.id IS NOT NULL),
+				'[]'::json
+			) as reviews
 		FROM products p
 		INNER JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
+		LEFT JOIN reviews rv ON p.id = rv.product_id
+		LEFT JOIN users u ON rv.user_id = u.id
 		WHERE p.slug = $1
 		GROUP BY p.id, c.id
 		LIMIT 1
 	`
 
 	var (
-		p          model.Product
-		cat        model.Category
-		imagesJSON []byte
+		product     dto.ProductDetailResponse
+		cat         model.Category
+		imagesJSON  []byte
+		reviewsJSON []byte
 	)
 
 	err := r.pool.QueryRow(ctx, query, slug).Scan(
-		&p.ID,
-		&p.CategoryID,
-		&p.Name,
-		&p.Slug,
-		&p.Description,
-		&p.Brand,
-		&p.Condition,
-		&p.Price,
-		&p.Stock,
-		&p.SKU,
-		&p.Specifications,
-		&p.Status,
-		&p.IsFeatured,
-		&p.Weight,
-		&p.CreatedAt,
+		&product.ID,
+		&product.CategoryID,
+		&product.Name,
+		&product.Slug,
+		&product.Description,
+		&product.Brand,
+		&product.Condition,
+		&product.Price,
+		&product.Stock,
+		&product.SKU,
+		&product.Specifications,
+		&product.Status,
+		&product.IsFeatured,
+		&product.Weight,
+		&product.CreatedAt,
 		&cat.ID,
 		&cat.Name,
 		&cat.Slug,
 		&cat.Description,
 		&cat.CreatedAt,
 		&imagesJSON,
+		&reviewsJSON,
 	)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.Product{}, ErrProductNotFound
+			return dto.ProductDetailResponse{}, ErrProductNotFound
 		}
-
-		return model.Product{}, err
+		return dto.ProductDetailResponse{}, err
 	}
 
-	// Unmarshal images JSON to struct
-	if err := json.Unmarshal(imagesJSON, &p.Images); err != nil {
-		return model.Product{}, err
+	if err := json.Unmarshal(imagesJSON, &product.Images); err != nil {
+		return dto.ProductDetailResponse{}, fmt.Errorf("unmarshal images failed: %w", err)
 	}
 
-	p.Category = cat
+	if err := json.Unmarshal(reviewsJSON, &product.Reviews); err != nil {
+		return dto.ProductDetailResponse{}, fmt.Errorf("unmarshal reviews failed: %w", err)
+	}
 
-	return p, nil
+	product.Category = cat
+
+	return product, nil
 }
 
 // Update updates an existing product
@@ -278,7 +405,7 @@ func (r *ProductRepositoryImpl) Update(
 ) (*model.Product, error) {
 
 	query := `
-		UPDATE products 
+		UPDATE products
 		SET category_id = $1,
 		    name = $2,
 		    slug = $3,
@@ -363,9 +490,9 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 	ctx context.Context,
 ) ([]model.Product, error) {
 	query := `
-		SELECT 
-			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-			p.condition, p.price, p.stock, p.sku, p.specifications, 
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
 			p.status, p.is_featured, p.weight, p.created_at,
 			c.id, c.name, c.slug, c.description, c.created_at,
 			COALESCE(
@@ -449,9 +576,9 @@ func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 	categorySlug string,
 ) ([]model.Product, error) {
 	query := `
-		SELECT 
-			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-			p.condition, p.price, p.stock, p.sku, p.specifications, 
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
 			p.status, p.is_featured, p.weight, p.created_at,
 			c.id, c.name, c.slug, c.description, c.created_at,
 			COALESCE(
@@ -535,9 +662,9 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 	status string,
 ) ([]model.Product, error) {
 	query := `
-		SELECT 
-			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-			p.condition, p.price, p.stock, p.sku, p.specifications, 
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
 			p.status, p.is_featured, p.weight, p.created_at,
 			c.id, c.name, c.slug, c.description, c.created_at,
 			COALESCE(
@@ -620,9 +747,9 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 	ctx context.Context,
 ) ([]model.Product, error) {
 	query := `
-		SELECT 
-			p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-			p.condition, p.price, p.stock, p.sku, p.specifications, 
+		SELECT
+			p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+			p.condition, p.price, p.stock, p.sku, p.specifications,
 			p.status, p.is_featured, p.weight, p.created_at,
 			c.id, c.name, c.slug, c.description, c.created_at,
 			COALESCE(
@@ -836,7 +963,7 @@ func (r *ProductRepositoryImpl) UpdateStock(
 ) error {
 
 	query := `
-		UPDATE products 
+		UPDATE products
 		SET stock = $1
 		WHERE id = $2
 	`
@@ -863,9 +990,9 @@ func (r *ProductRepositoryImpl) SearchProducts(
 	keyword string,
 ) ([]model.Product, error) {
 	query := `
-        SELECT 
-            p.id, p.category_id, p.name, p.slug, p.description, p.brand, 
-            p.condition, p.price, p.stock, p.sku, p.specifications, 
+        SELECT
+            p.id, p.category_id, p.name, p.slug, p.description, p.brand,
+            p.condition, p.price, p.stock, p.sku, p.specifications,
             p.status, p.is_featured, p.weight, p.created_at,
             c.id, c.name, c.slug, c.description, c.created_at,
             COALESCE(
