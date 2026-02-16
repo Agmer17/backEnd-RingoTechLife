@@ -5,6 +5,7 @@ import (
 	"backEnd-RingoTechLife/internal/category"
 	"backEnd-RingoTechLife/internal/productimage"
 	"backEnd-RingoTechLife/internal/products"
+	"backEnd-RingoTechLife/internal/review"
 	"backEnd-RingoTechLife/internal/storage"
 	"backEnd-RingoTechLife/internal/user"
 )
@@ -15,6 +16,7 @@ type ServiceConfigs struct {
 	ServerStorage   *storage.FileStorage
 	CategoryService *category.CategoryService
 	ProductService  *products.ProductsService
+	ReviewService   *review.ReviewService
 }
 
 func NewServiceConfigs(rcf *RepositoryConfigs, serverStorage *storage.FileStorage) *ServiceConfigs {
@@ -24,6 +26,7 @@ func NewServiceConfigs(rcf *RepositoryConfigs, serverStorage *storage.FileStorag
 	categorySvc := category.NewCategoryService(rcf.CategoryRepository)
 	productImageSvc := productimage.NewProductImageService(rcf.ProductImageRepository, serverStorage)
 	productSvc := products.NewProductsService(rcf.ProductsRepository, serverStorage, productImageSvc)
+	reviewsSvc := review.NewReviewService(rcf.ReviewRepository)
 
 	return &ServiceConfigs{
 		AuthService:     authSvc,
@@ -31,6 +34,7 @@ func NewServiceConfigs(rcf *RepositoryConfigs, serverStorage *storage.FileStorag
 		ServerStorage:   serverStorage,
 		CategoryService: categorySvc,
 		ProductService:  productSvc,
+		ReviewService:   reviewsSvc,
 	}
 
 }

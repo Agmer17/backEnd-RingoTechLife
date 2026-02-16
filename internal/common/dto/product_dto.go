@@ -27,17 +27,17 @@ type CreateProductRequest struct {
 }
 
 type UpdateProductsRequest struct {
-	CategoryId        *string  `form:"product_category_id" validate:"omitempty,required,uuid"`
-	Name              *string  `form:"product_name" validate:"omitempty,required,min=3,alphanumspace"`
-	Slug              *string  `form:"product_slug" validate:"omitempty,required,max=150,slug"`
+	CategoryId        *string  `form:"product_category_id" validate:"omitempty,uuid"`
+	Name              *string  `form:"product_name" validate:"omitempty,min=3,alphanumspace"`
+	Slug              *string  `form:"product_slug" validate:"omitempty,max=150,slug"`
 	Description       *string  `form:"product_description" validate:"omitempty"`
 	Brand             *string  `form:"product_brand" validate:"omitempty,max=100"`
-	Condition         *string  `form:"product_condition" validate:"omitempty,required,oneof=new used refurbished"`
-	Sku               *string  `form:"product_sku" validate:"omitempty,required"`
-	Price             *float32 `form:"product_price" validate:"omitempty,required"`
-	Stock             *int     `form:"product_initial_stock" validate:"omitempty,required"`
+	Condition         *string  `form:"product_condition" validate:"omitempty,oneof=new used refurbished"`
+	Sku               *string  `form:"product_sku" validate:"omitempty"`
+	Price             *float32 `form:"product_price" validate:"omitempty"`
+	Stock             *int     `form:"product_initial_stock" validate:"omitempty"`
 	Specifications    *string  `form:"product_specification" validate:"omitempty,json"`
-	Status            *string  `form:"product_status" validate:"omitempty,required,oneof=draft active inactive out_of_stock"`
+	Status            *string  `form:"product_status" validate:"omitempty,oneof=draft active inactive out_of_stock"`
 	IsFeatured        *bool    `form:"product_featured" validate:"omitempty"`
 	Weight            *int     `form:"product_weight" validate:"omitempty,min=1"`
 	NewProductImages  []*multipart.FileHeader

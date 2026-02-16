@@ -5,6 +5,7 @@ import (
 	"backEnd-RingoTechLife/internal/category"
 	"backEnd-RingoTechLife/internal/common"
 	"backEnd-RingoTechLife/internal/products"
+	"backEnd-RingoTechLife/internal/review"
 	"backEnd-RingoTechLife/internal/user"
 	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
@@ -19,11 +20,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type RoutesHandler struct {
-	AuthHandler *auth.AuthHandler
-}
-
-func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
+func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) {
 
 	// ======= validator
 	validator := validator.New()
@@ -37,6 +34,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 	userHandler := user.NewUserHandler(svcCfg.UserService, decoder, validator)
 	categoryHandler := category.NewCategoryHandler(svcCfg.CategoryService, validator)
 	productHandler := products.NewProductsHandler(svcCfg.ProductService, decoder, validator)
+	reviewHandler := review.NewReviewHandler(svcCfg.ReviewService, validator)
 
 	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 
@@ -68,9 +66,8 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) *RoutesHandler {
 		userHandler.SetUpRoute(r)
 		categoryHandler.SetUpRoute(r)
 		productHandler.SetUpRoute(r)
+		reviewHandler.SetupRoute(r)
 	})
 
 	r.Handle("/uploads/public/*", http.StripPrefix("/uploads/public/", fileServer))
-
-	return &RoutesHandler{}
 }

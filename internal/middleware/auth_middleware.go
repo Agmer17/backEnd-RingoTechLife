@@ -24,14 +24,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Extract token dari header
 		token, err := pkg.GetAccessToken(authHeader)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			pkg.JSONError(w, 401, err.Error())
 			return
 		}
 
 		// Verify token
 		claims, err := pkg.VerifyToken(token)
 		if err != nil {
-			http.Error(w, "Token tidak valid atau sudah kadaluarsa", http.StatusUnauthorized)
+			pkg.JSONError(w, 401, "token tidak valid atau kadaluarsa")
 			return
 		}
 
