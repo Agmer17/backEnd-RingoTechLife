@@ -90,9 +90,8 @@ func (r *ProductRepositoryImpl) Create(
 	})
 
 	if err != nil {
-		var pgErr *pgconn.PgError
 
-		if errors.As(err, &pgErr) {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 			if pgErr.Code == "23505" {
 				switch pgErr.ConstraintName {
 				case "products_slug_key":
@@ -597,7 +596,7 @@ func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 		FROM products p
 		INNER JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
-		WHERE c.slug = $1
+		WHERE c.slug = $1 and p.status = 'active'
 		GROUP BY p.id, c.id
 		ORDER BY p.created_at DESC
 	`

@@ -2,6 +2,7 @@ package configs
 
 import (
 	"backEnd-RingoTechLife/internal/category"
+	"backEnd-RingoTechLife/internal/order"
 	"backEnd-RingoTechLife/internal/productimage"
 	"backEnd-RingoTechLife/internal/products"
 	"backEnd-RingoTechLife/internal/review"
@@ -16,6 +17,7 @@ type RepositoryConfigs struct {
 	ProductsRepository     *products.ProductRepositoryImpl
 	ProductImageRepository *productimage.ProductImageRepoImpl
 	ReviewRepository       *review.ReviewRepositoryImpl
+	TransactionRepository  *order.OrderRepositoryImpl
 }
 
 func NewRepositoryConfigs(pool *pgxpool.Pool) *RepositoryConfigs {
@@ -25,6 +27,7 @@ func NewRepositoryConfigs(pool *pgxpool.Pool) *RepositoryConfigs {
 	productRepo := products.NewProductsRepository(pool)
 	productImgRepo := productimage.NewProductImageRepository(pool)
 	reviewRepo := review.NewReviewRepository(pool)
+	orderRepo := order.NewOrderRepository(pool)
 
 	return &RepositoryConfigs{
 		UserRepository:         userRepo,
@@ -32,6 +35,7 @@ func NewRepositoryConfigs(pool *pgxpool.Pool) *RepositoryConfigs {
 		ProductsRepository:     productRepo,
 		ProductImageRepository: productImgRepo,
 		ReviewRepository:       reviewRepo,
+		TransactionRepository:  orderRepo,
 	}
 
 }

@@ -4,6 +4,7 @@ import (
 	"backEnd-RingoTechLife/internal/auth"
 	"backEnd-RingoTechLife/internal/category"
 	"backEnd-RingoTechLife/internal/common"
+	"backEnd-RingoTechLife/internal/order"
 	"backEnd-RingoTechLife/internal/products"
 	"backEnd-RingoTechLife/internal/review"
 	"backEnd-RingoTechLife/internal/user"
@@ -35,6 +36,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) {
 	categoryHandler := category.NewCategoryHandler(svcCfg.CategoryService, validator)
 	productHandler := products.NewProductsHandler(svcCfg.ProductService, decoder, validator)
 	reviewHandler := review.NewReviewHandler(svcCfg.ReviewService, validator)
+	orderHandler := order.NewOrderHandler(svcCfg.OrderService)
 
 	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 
@@ -67,6 +69,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) {
 		categoryHandler.SetUpRoute(r)
 		productHandler.SetUpRoute(r)
 		reviewHandler.SetupRoute(r)
+		orderHandler.SetUpRoute(r)
 	})
 
 	r.Handle("/uploads/public/*", http.StripPrefix("/uploads/public/", fileServer))

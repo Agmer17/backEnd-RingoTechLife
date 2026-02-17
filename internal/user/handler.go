@@ -90,9 +90,9 @@ func (h *UserHandler) UpdateCurrentUserHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// Remove password from response
-	updatedUser.Password = ""
+	response := dto.ModelUserToResponse(updatedUser)
 
-	pkg.JSONSuccess(w, 200, "Berhasil update profile", updatedUser)
+	pkg.JSONSuccess(w, 200, "Berhasil update profile", response)
 }
 
 // DeleteCurrentUserHandler - DELETE /user/profile
@@ -131,10 +131,9 @@ func (h *UserHandler) GetUserByIDHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Remove password from response
-	user.Password = ""
+	responseData := dto.ModelUserToResponse(user)
 
-	pkg.JSONSuccess(w, 200, "Berhasil mengambil data user", user)
+	pkg.JSONSuccess(w, 200, "Berhasil mengambil data user", responseData)
 }
 
 // UpdateUserByIDHandler - PUT /user/{id}
