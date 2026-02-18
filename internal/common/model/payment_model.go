@@ -6,6 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	PaymentStatusUnpaid    PaymentStatus = "unpaid"
+	PaymentStatusSubmitted PaymentStatus = "submitted"
+	PaymentStatusApproved  PaymentStatus = "approved"
+	PaymentStatusRejected  PaymentStatus = "rejected"
+)
+
 type Payment struct {
 	ID      uuid.UUID     `json:"id"`
 	OrderID uuid.UUID     `json:"order_id"`

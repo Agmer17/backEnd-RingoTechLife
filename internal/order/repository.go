@@ -5,8 +5,8 @@ package order
 import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
+	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +18,7 @@ type OrderRepositoryInterface interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Order, error)
 	GetByIDWithDetails(ctx context.Context, id uuid.UUID) (*model.Order, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.Order, error)
+	GetByUserIDWithDetails(ctx context.Context, userID uuid.UUID) ([]model.Order, error)
 	GetAll(ctx context.Context) ([]model.Order, error)
 	GetByStatus(ctx context.Context, status model.OrderStatus) ([]model.Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.OrderStatus) error
@@ -39,16 +40,13 @@ func (r *OrderRepositoryImpl) Create(
 	order *model.Order,
 	items []model.OrderItem,
 ) (*model.Order, error) {
-
 	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-
 		// 1. Insert order
 		orderQuery := `
 			INSERT INTO orders (user_id, status, subtotal, total_amount, notes)
 			VALUES ($1, $2, $3, $4, $5)
 			RETURNING id, created_at, updated_at
 		`
-
 		err := tx.QueryRow(ctx, orderQuery,
 			order.UserID,
 			order.Status,
@@ -60,28 +58,25 @@ func (r *OrderRepositoryImpl) Create(
 			return fmt.Errorf("failed to insert order: %w", err)
 		}
 
-		// Batch Insert order items
+		// 2. Insert order items + update stock
 		itemQuery := `
-			INSERT INTO order_items
+			INSERT INTO order_items 
 				(order_id, product_id, product_name, product_sku, price_at_purchase, quantity, subtotal)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id, created_at
 		`
-
 		stockQuery := `
-			UPDATE products
+			UPDATE products 
 			SET stock = stock - $1
 			WHERE id = $2 AND stock >= $1
 			RETURNING stock
 		`
 
-		var batch pgx.Batch
-
-		// Queue insert item queries
 		for i := range items {
 			items[i].OrderID = order.ID
 
-			batch.Queue(itemQuery,
+			// Insert item
+			err := tx.QueryRow(ctx, itemQuery,
 				items[i].OrderID,
 				items[i].ProductID,
 				items[i].ProductName,
@@ -89,30 +84,14 @@ func (r *OrderRepositoryImpl) Create(
 				items[i].PriceAtPurchase,
 				items[i].Quantity,
 				items[i].Subtotal,
-			)
-
-			// Queue stock update
-			batch.Queue(stockQuery,
-				items[i].Quantity,
-				items[i].ProductID,
-			)
-		}
-
-		br := tx.SendBatch(ctx, &batch)
-		defer br.Close()
-
-		// Read results in order
-		for i := range items {
-
-			// Read insert result
-			err := br.QueryRow().Scan(&items[i].ID, &items[i].CreatedAt)
+			).Scan(&items[i].ID, &items[i].CreatedAt)
 			if err != nil {
 				return fmt.Errorf("failed to insert order item: %w", err)
 			}
 
-			// Read stock update result
+			// Update stock
 			var newStock int
-			err = br.QueryRow().Scan(&newStock)
+			err = tx.QueryRow(ctx, stockQuery, items[i].Quantity, items[i].ProductID).Scan(&newStock)
 			if err != nil {
 				if err == pgx.ErrNoRows {
 					return fmt.Errorf("insufficient stock for product %s", items[i].ProductID)
@@ -127,10 +106,8 @@ func (r *OrderRepositoryImpl) Create(
 			VALUES ($1, $2, $3)
 			RETURNING id, created_at, updated_at
 		`
-
 		var paymentID uuid.UUID
-		var paymentCreatedAt, paymentUpdatedAt time.Time
-
+		var paymentCreatedAt, paymentUpdatedAt interface{}
 		err = tx.QueryRow(ctx, paymentQuery,
 			order.ID,
 			model.PaymentStatusUnpaid,
@@ -296,6 +273,101 @@ func (r *OrderRepositoryImpl) GetByUserID(
 	return orders, nil
 }
 
+func (r *OrderRepositoryImpl) GetByUserIDWithDetails(
+	ctx context.Context,
+	userID uuid.UUID,
+) ([]model.Order, error) {
+
+	query := `
+	SELECT
+		o.id,
+		o.user_id,
+		o.status,
+		o.subtotal,
+		o.total_amount,
+		o.notes,
+		o.created_at,
+		o.updated_at,
+		o.confirmed_at,
+		o.cancelled_at,
+
+		COALESCE(
+			json_agg(
+				jsonb_build_object(
+					'id', oi.id,
+					'order_id', oi.order_id,
+					'product_id', oi.product_id,
+					'product_name', oi.product_name,
+					'product_sku', oi.product_sku,
+					'price_at_purchase', oi.price_at_purchase,
+					'quantity', oi.quantity,
+					'subtotal', oi.subtotal,
+					'created_at', oi.created_at AT TIME ZONE 'UTC'
+				)
+			) FILTER (WHERE oi.id IS NOT NULL),
+			'[]'
+		) AS items,
+
+		to_jsonb(p) AS payment
+
+	FROM orders o
+	LEFT JOIN order_items oi ON oi.order_id = o.id
+	LEFT JOIN payments p ON p.order_id = o.id
+	WHERE o.user_id = $1
+	GROUP BY o.id, p.id
+	ORDER BY o.created_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []model.Order
+
+	for rows.Next() {
+		var order model.Order
+		var itemsJSON []byte
+		var paymentJSON []byte
+
+		err := rows.Scan(
+			&order.ID,
+			&order.UserID,
+			&order.Status,
+			&order.Subtotal,
+			&order.TotalAmount,
+			&order.Notes,
+			&order.CreatedAt,
+			&order.UpdatedAt,
+			&order.ConfirmedAt,
+			&order.CancelledAt,
+			&itemsJSON,
+			&paymentJSON,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Unmarshal items
+		if err := json.Unmarshal(itemsJSON, &order.Items); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal items: %w", err)
+		}
+
+		// Unmarshal payment (nullable)
+		if paymentJSON != nil {
+			var payment model.Payment
+			if err := json.Unmarshal(paymentJSON, &payment); err == nil {
+				order.Payment = &payment
+			}
+		}
+
+		orders = append(orders, order)
+	}
+
+	return orders, nil
+}
+
 func (r *OrderRepositoryImpl) GetAll(ctx context.Context) ([]model.Order, error) {
 	query := `
 		SELECT id, user_id, status, subtotal, total_amount, notes,
@@ -420,7 +492,6 @@ func (r *OrderRepositoryImpl) UpdateStatus(
 
 func (r *OrderRepositoryImpl) Cancel(ctx context.Context, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		// 1. Get order items to restore stock
 		itemsQuery := `
 			SELECT product_id, quantity
 			FROM order_items

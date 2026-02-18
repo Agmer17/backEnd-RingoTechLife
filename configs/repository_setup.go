@@ -17,7 +17,7 @@ type RepositoryConfigs struct {
 	ProductsRepository     *products.ProductRepositoryImpl
 	ProductImageRepository *productimage.ProductImageRepoImpl
 	ReviewRepository       *review.ReviewRepositoryImpl
-	TransactionRepository  *order.OrderRepositoryImpl
+	OrderRepository        *order.OrderRepositoryImpl
 }
 
 func NewRepositoryConfigs(pool *pgxpool.Pool) *RepositoryConfigs {
@@ -35,7 +35,7 @@ func NewRepositoryConfigs(pool *pgxpool.Pool) *RepositoryConfigs {
 		ProductsRepository:     productRepo,
 		ProductImageRepository: productImgRepo,
 		ReviewRepository:       reviewRepo,
-		TransactionRepository:  orderRepo,
+		OrderRepository:        orderRepo,
 	}
 
 }

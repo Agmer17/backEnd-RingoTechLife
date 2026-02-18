@@ -2,31 +2,82 @@ package order
 
 import (
 	"backEnd-RingoTechLife/internal/common"
+	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/middleware"
+	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
+	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
 
 type OrderHandler struct {
-	transactionService *TransactionService
+	orderService *OrderService
+	validator    *validator.Validate
 }
 
-func NewOrderHandler(tsvc *TransactionService) *OrderHandler {
-
+func NewOrderHandler(osvc *OrderService, vld *validator.Validate) *OrderHandler {
 	return &OrderHandler{
-		transactionService: tsvc,
+		orderService: osvc,
+		validator:    vld,
 	}
 }
 
-func (t *OrderHandler) SetUpRoute(router chi.Router) {
+func (th *OrderHandler) CreateOrderHandler(w http.ResponseWriter, r *http.Request) {
 
-	router.Route("/transaction", func(r chi.Router) {
+	var order dto.CreateOrderRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+		pkg.JSONError(w, 400, "harap isi data order dengan benar!")
+		return
+	}
+
+	if err := th.validator.Struct(order); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	produtId, err := uuid.Parse(order.ProductId)
+	if err != nil {
+		pkg.JSONError(w, 400, "product id tidak valid! gagal membuat order")
+		return
+	}
+
+	userId, _ := middleware.GetUserID(r.Context())
+	result, insertErr := th.orderService.CreateOneOrder(r.Context(), produtId, order.Quantity, userId)
+
+	if insertErr != nil {
+		pkg.JSONError(w, insertErr.Code, insertErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil membuat order", result)
+
+}
+
+func (th *OrderHandler) GetAllOfMyOrder(w http.ResponseWriter, r *http.Request) {
+
+	userId, _ := middleware.GetUserID(r.Context())
+
+	data, err := th.orderService.GetAllOrderByUserId(r.Context(), userId)
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+
+}
+
+func (th *OrderHandler) SetUpRoute(router chi.Router) {
+
+	router.Route("/orders", func(r chi.Router) {
 		r.Use(httprate.Limit(
-			30,
+			20,
 			time.Minute,
 			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -37,6 +88,10 @@ func (t *OrderHandler) SetUpRoute(router chi.Router) {
 			}),
 		))
 		r.Use(middleware.AuthMiddleware)
+
+		r.Post("/create-order", th.CreateOrderHandler)
+		r.Get("/my-orders", th.GetAllOfMyOrder)
+
 	})
 
 }
