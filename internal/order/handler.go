@@ -93,6 +93,62 @@ func (th *OrderHandler) GetOrderById(w http.ResponseWriter, r *http.Request) {
 	pkg.JSONSuccess(w, 200, "berhasil mengambil data!", data)
 }
 
+func (th *OrderHandler) GetAllOrderHandler(w http.ResponseWriter, r *http.Request) {
+
+	data, err := th.orderService.GetAllOrders(r.Context())
+
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+
+}
+
+func (th *OrderHandler) GetAllOrdersByStatus(w http.ResponseWriter, r *http.Request) {
+
+	param := chi.URLParam(r, "status")
+
+	data, err := th.orderService.GetAllOrdersByStatus(r.Context(), param)
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+}
+
+func (th *OrderHandler) UpdateStatusHandler(w http.ResponseWriter, r *http.Request) {
+
+	var updateOrder dto.UpdateStatusOrder
+
+	if err := json.NewDecoder(r.Body).Decode(&updateOrder); err != nil {
+		pkg.JSONError(w, 400, "harap isi data order dengan benar!")
+		return
+	}
+
+	if err := th.validator.Struct(updateOrder); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	productId, err := uuid.Parse(updateOrder.OrderId)
+	if err != nil {
+		pkg.JSONError(w, 400, "id tidak valid!")
+		return
+	}
+
+	updateErr := th.orderService.UpdateOrderStatus(r.Context(), productId, updateOrder.Status)
+
+	if updateErr != nil {
+		pkg.JSONError(w, updateErr.Code, updateErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengupdate data!", updateOrder)
+}
+
 func (th *OrderHandler) SetUpRoute(router chi.Router) {
 
 	router.Route("/orders", func(r chi.Router) {
@@ -112,6 +168,14 @@ func (th *OrderHandler) SetUpRoute(router chi.Router) {
 		r.Post("/create-order", th.CreateOrderHandler)
 		r.Get("/my-orders", th.GetAllOfMyOrder)
 		r.Get("/id/{id}", th.GetOrderById)
+
+		r.Group(func(adminRoute chi.Router) {
+			adminRoute.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
+
+			adminRoute.Get("/get-all", th.GetAllOrderHandler)
+			adminRoute.Get("/status/{status}", th.GetAllOrdersByStatus)
+			adminRoute.Put("/update-status/", th.UpdateStatusHandler)
+		})
 
 	})
 

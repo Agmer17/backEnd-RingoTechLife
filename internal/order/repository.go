@@ -22,7 +22,7 @@ type OrderRepositoryInterface interface {
 	GetByIDWithDetails(ctx context.Context, id uuid.UUID) (*model.Order, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]model.Order, error)
 	GetByUserIDWithDetails(ctx context.Context, userID uuid.UUID) ([]model.Order, error)
-	GetAll(ctx context.Context) ([]model.Order, error)
+	GetAllWithDetails(ctx context.Context) ([]model.Order, error)
 	GetByStatus(ctx context.Context, status model.OrderStatus) ([]model.Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.OrderStatus) error
 	Cancel(ctx context.Context, id uuid.UUID) error
@@ -192,19 +192,23 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 			'[]'
 		) AS items,
 
-		jsonb_build_object(
-			'id', p.id,
-			'order_id', p.order_id,
-			'status', p.status,
-			'amount', p.amount::float,
-			'proof_image', p.proof_image,
-			'admin_note', p.admin_note,
-			'verified_by', p.verified_by,
-			'created_at', p.created_at AT TIME ZONE 'UTC',
-			'updated_at', p.updated_at AT TIME ZONE 'UTC',
-			'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
-			'verified_at', p.verified_at AT TIME ZONE 'UTC'
-		)
+		CASE 
+    WHEN p.id IS NOT NULL THEN
+        jsonb_build_object(
+            'id', p.id,
+            'order_id', p.order_id,
+            'status', p.status,
+            'amount', p.amount::float,
+            'proof_image', p.proof_image,
+            'admin_note', p.admin_note,
+            'verified_by', p.verified_by,
+            'created_at', p.created_at AT TIME ZONE 'UTC',
+            'updated_at', p.updated_at AT TIME ZONE 'UTC',
+            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+            'verified_at', p.verified_at AT TIME ZONE 'UTC'
+        )
+    ELSE NULL
+END AS payment
 
 	FROM orders o
 	LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -332,7 +336,23 @@ func (r *OrderRepositoryImpl) GetByUserIDWithDetails(
 			'[]'
 		) AS items,
 
-		to_jsonb(p) AS payment
+		CASE 
+    WHEN p.id IS NOT NULL THEN
+        jsonb_build_object(
+            'id', p.id,
+            'order_id', p.order_id,
+            'status', p.status,
+            'amount', p.amount::float,
+            'proof_image', p.proof_image,
+            'admin_note', p.admin_note,
+            'verified_by', p.verified_by,
+            'created_at', p.created_at AT TIME ZONE 'UTC',
+            'updated_at', p.updated_at AT TIME ZONE 'UTC',
+            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+            'verified_at', p.verified_at AT TIME ZONE 'UTC'
+        )
+    ELSE NULL
+END AS payment
 
 	FROM orders o
 	LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -392,12 +412,58 @@ func (r *OrderRepositoryImpl) GetByUserIDWithDetails(
 	return orders, nil
 }
 
-func (r *OrderRepositoryImpl) GetAll(ctx context.Context) ([]model.Order, error) {
+func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Order, error) {
 	query := `
-		SELECT id, user_id, status, subtotal, total_amount, notes,
-		       created_at, updated_at, confirmed_at, cancelled_at
-		FROM orders
-		ORDER BY created_at DESC
+	SELECT
+		o.id,
+		o.user_id,
+		o.status,
+		o.subtotal,
+		o.total_amount,
+		o.notes,
+		o.created_at,
+		o.updated_at,
+		o.confirmed_at,
+		o.cancelled_at,
+
+		COALESCE(
+			json_agg(
+				jsonb_build_object(
+					'id', oi.id,
+					'order_id', oi.order_id,
+					'product_id', oi.product_id,
+					'product_name', oi.product_name,
+					'product_sku', oi.product_sku,
+					'price_at_purchase', oi.price_at_purchase,
+					'quantity', oi.quantity,
+					'subtotal', oi.subtotal,
+					'created_at', oi.created_at AT TIME ZONE 'UTC'
+				)
+			) FILTER (WHERE oi.id IS NOT NULL),
+			'[]'
+		) AS items,
+		CASE 
+    WHEN p.id IS NOT NULL THEN
+        jsonb_build_object(
+            'id', p.id,
+            'order_id', p.order_id,
+            'status', p.status,
+            'amount', p.amount::float,
+            'proof_image', p.proof_image,
+            'admin_note', p.admin_note,
+            'verified_by', p.verified_by,
+            'created_at', p.created_at AT TIME ZONE 'UTC',
+            'updated_at', p.updated_at AT TIME ZONE 'UTC',
+            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+            'verified_at', p.verified_at AT TIME ZONE 'UTC'
+        )
+    ELSE NULL
+	END AS payment
+	FROM orders o
+	LEFT JOIN order_items oi ON oi.order_id = o.id
+	LEFT JOIN payments p ON p.order_id = o.id
+	GROUP BY o.id, p.id
+	ORDER BY o.created_at DESC
 	`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
@@ -408,6 +474,8 @@ func (r *OrderRepositoryImpl) GetAll(ctx context.Context) ([]model.Order, error)
 	var orders []model.Order
 	for rows.Next() {
 		var order model.Order
+		var itemsJSON []byte
+		var paymentJSON []byte
 		err := rows.Scan(
 			&order.ID,
 			&order.UserID,
@@ -419,9 +487,23 @@ func (r *OrderRepositoryImpl) GetAll(ctx context.Context) ([]model.Order, error)
 			&order.UpdatedAt,
 			&order.ConfirmedAt,
 			&order.CancelledAt,
+			&itemsJSON,
+			&paymentJSON,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		if err := json.Unmarshal(itemsJSON, &order.Items); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal items: %w", err)
+		}
+
+		// Unmarshal payment (nullable)
+		if paymentJSON != nil {
+			var payment model.Payment
+			if err := json.Unmarshal(paymentJSON, &payment); err == nil {
+				order.Payment = &payment
+			}
 		}
 		orders = append(orders, order)
 	}
@@ -434,11 +516,57 @@ func (r *OrderRepositoryImpl) GetByStatus(
 	status model.OrderStatus,
 ) ([]model.Order, error) {
 	query := `
-		SELECT id, user_id, status, subtotal, total_amount, notes,
-		       created_at, updated_at, confirmed_at, cancelled_at
-		FROM orders
-		WHERE status = $1
-		ORDER BY created_at DESC
+	SELECT
+		o.id,
+		o.user_id,
+		o.status,
+		o.subtotal,
+		o.total_amount,
+		o.notes,
+		o.created_at,
+		o.updated_at,
+		o.confirmed_at,
+		o.cancelled_at,
+
+		COALESCE(
+			json_agg(
+				jsonb_build_object(
+					'id', oi.id,
+					'order_id', oi.order_id,
+					'product_id', oi.product_id,
+					'product_name', oi.product_name,
+					'product_sku', oi.product_sku,
+					'price_at_purchase', oi.price_at_purchase,
+					'quantity', oi.quantity,
+					'subtotal', oi.subtotal,
+					'created_at', oi.created_at AT TIME ZONE 'UTC'
+				)
+			) FILTER (WHERE oi.id IS NOT NULL),
+			'[]'
+		) AS items,
+		CASE 
+    WHEN p.id IS NOT NULL THEN
+        jsonb_build_object(
+            'id', p.id,
+            'order_id', p.order_id,
+            'status', p.status,
+            'amount', p.amount::float,
+            'proof_image', p.proof_image,
+            'admin_note', p.admin_note,
+            'verified_by', p.verified_by,
+            'created_at', p.created_at AT TIME ZONE 'UTC',
+            'updated_at', p.updated_at AT TIME ZONE 'UTC',
+            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+            'verified_at', p.verified_at AT TIME ZONE 'UTC'
+        )
+    ELSE NULL
+END AS payment
+	FROM orders o
+	LEFT JOIN order_items oi ON oi.order_id = o.id
+	LEFT JOIN payments p ON p.order_id = o.id
+	WHERE o.status = $1
+	GROUP BY o.id, p.id
+	ORDER BY o.created_at DESC
 	`
 	rows, err := r.db.Query(ctx, query, status)
 	if err != nil {
@@ -446,9 +574,11 @@ func (r *OrderRepositoryImpl) GetByStatus(
 	}
 	defer rows.Close()
 
-	var orders []model.Order
+	var orders []model.Order = make([]model.Order, 0)
 	for rows.Next() {
 		var order model.Order
+		var itemsJSON []byte
+		var paymentJSON []byte
 		err := rows.Scan(
 			&order.ID,
 			&order.UserID,
@@ -460,9 +590,23 @@ func (r *OrderRepositoryImpl) GetByStatus(
 			&order.UpdatedAt,
 			&order.ConfirmedAt,
 			&order.CancelledAt,
+			&itemsJSON,
+			&paymentJSON,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		if err := json.Unmarshal(itemsJSON, &order.Items); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal items: %w", err)
+		}
+
+		// Unmarshal payment (nullable)
+		if paymentJSON != nil {
+			var payment model.Payment
+			if err := json.Unmarshal(paymentJSON, &payment); err == nil {
+				order.Payment = &payment
+			}
 		}
 		orders = append(orders, order)
 	}
@@ -508,7 +652,7 @@ func (r *OrderRepositoryImpl) UpdateStatus(
 			return err
 		}
 		if res.RowsAffected() == 0 {
-			return fmt.Errorf("order not found")
+			return ErrNoOrderFound
 		}
 		return nil
 	})

@@ -49,7 +49,7 @@ func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			role, ok := r.Context().Value(RoleKey).(string)
 			if !ok {
-				http.Error(w, "Role tidak ditemukan", http.StatusForbidden)
+				pkg.JSONError(w, http.StatusForbidden, "Kamu harus login sebelum bisa mengakses fitur ini")
 				return
 			}
 
@@ -63,7 +63,7 @@ func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 			}
 
 			if !allowed {
-				http.Error(w, "Anda tidak memiliki akses ke fitur ini", http.StatusForbidden)
+				pkg.JSONError(w, http.StatusForbidden, "Kamu tidak punya akses ke fitur ini")
 				return
 			}
 

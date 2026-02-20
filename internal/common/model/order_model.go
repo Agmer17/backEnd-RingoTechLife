@@ -9,6 +9,13 @@ import (
 type OrderStatus string
 type PaymentStatus string
 
+var AllowedOrderStatus = map[string]bool{
+	string(OrderStatusPending):             true,
+	string(OrderStatusWaitingConfirmation): true,
+	string(OrderStatusCancelled):           true,
+	string(OrderStatusConfirmed):           true,
+}
+
 const (
 	OrderStatusPending             OrderStatus = "pending"
 	OrderStatusWaitingConfirmation OrderStatus = "waiting_confirmation"

@@ -35,7 +35,7 @@ func NewServiceConfigs(rcf *RepositoryConfigs, serverStorage *storage.FileStorag
 	productSvc := products.NewProductsService(rcf.ProductsRepository, serverStorage, productImageSvc)
 	reviewsSvc := review.NewReviewService(rcf.ReviewRepository)
 	orderSvc := order.NewOrderService(rcf.OrderRepository, productSvc, serviceContext)
-	paymentSvc := payment.NewPaymentService(rcf.PaymentRepository, serverStorage)
+	paymentSvc := payment.NewPaymentService(rcf.PaymentRepository, serverStorage, orderSvc)
 
 	return &ServiceConfigs{
 		AuthService:     authSvc,

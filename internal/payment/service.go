@@ -4,6 +4,7 @@ import (
 	"backEnd-RingoTechLife/internal/common"
 	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/common/model"
+	"backEnd-RingoTechLife/internal/order"
 	"backEnd-RingoTechLife/internal/storage"
 	"context"
 	"errors"
@@ -15,14 +16,16 @@ import (
 const paymentImagePlace = "payments"
 
 type PayementService struct {
-	paymentRepo PaymentRepositoryInterface
-	fileStorage *storage.FileStorage
+	paymentRepo  PaymentRepositoryInterface
+	fileStorage  *storage.FileStorage
+	orderService *order.OrderService
 }
 
-func NewPaymentService(repo *PaymentRepositoryImpl, storage *storage.FileStorage) *PayementService {
+func NewPaymentService(repo *PaymentRepositoryImpl, storage *storage.FileStorage, orderSvc *order.OrderService) *PayementService {
 	return &PayementService{
-		paymentRepo: repo,
-		fileStorage: storage,
+		paymentRepo:  repo,
+		fileStorage:  storage,
+		orderService: orderSvc,
 	}
 }
 
@@ -72,6 +75,7 @@ func (ps *PayementService) SubmitProof(ctx context.Context, submitReq dto.Submit
 		return model.Payment{}, common.NewErrorResponse(500, "gagal memproses transaksi! "+subErr.Error())
 	}
 
+	ps.orderService.DeleteTransactionDeadline(orderId)
 	return tempData, nil
 
 }

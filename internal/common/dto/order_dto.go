@@ -5,3 +5,8 @@ type CreateOrderRequest struct {
 	Quantity  int     `json:"product_quantity" validate:"required,min=1,max=1000"`
 	Notes     *string `json:"order_notes" validate:"omitempty"`
 }
+
+type UpdateStatusOrder struct {
+	OrderId string `json:"order_id" validate:"required,uuid"`
+	Status  string `json:"status" validate:"required,oneof=pending waiting_confirmation confirmed cancelled"`
+}
