@@ -7,7 +7,6 @@ import (
 	"backEnd-RingoTechLife/internal/storage"
 	"context"
 	"errors"
-	"fmt"
 	"mime/multipart"
 
 	"github.com/google/uuid"
@@ -30,7 +29,7 @@ func NewPaymentService(repo *PaymentRepositoryImpl, storage *storage.FileStorage
 func (ps *PayementService) SubmitProof(ctx context.Context, submitReq dto.SubmitPaymentRequest, currentUser uuid.UUID) (model.Payment, *common.ErrorResponse) {
 
 	orderId, err := uuid.Parse(submitReq.OrderId)
-	fmt.Println(orderId)
+	// fmt.Println(orderId)
 	if err != nil {
 		return model.Payment{}, common.NewErrorResponse(400, "id payment tidak valid!")
 	}
@@ -57,7 +56,7 @@ func (ps *PayementService) SubmitProof(ctx context.Context, submitReq dto.Submit
 		return model.Payment{}, common.NewErrorResponse(401, "kamu tidak mengakses data ini")
 	}
 
-	if val.OrderStatus == string(model.OrderStatusCancelled) {
+	if val.OrderStatus != string(model.OrderStatusPending) {
 		ps.fileStorage.DeletePublicFile(savedFileNames, paymentImagePlace)
 		return model.Payment{}, common.NewErrorResponse(400, "waktu pembayaran untuk order ini sudah habis")
 	}

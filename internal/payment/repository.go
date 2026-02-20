@@ -87,14 +87,14 @@ func (p *PaymentRepositoryImpl) SubmitProof(
 			    submitted_at = NOW(),
 			    updated_at = NOW()
 			WHERE order_id = $4
-			RETURNING status, submitted_at, updated_at
+			RETURNING id,status, submitted_at, updated_at
 		`
 		err := tx.QueryRow(ctx, paymentQuery,
 			tempData.ProofImage,
 			model.PaymentStatusSubmitted,
 			tempData.Amount,
 			tempData.OrderID,
-		).Scan(&tempData.Status, &tempData.SubmittedAt, &tempData.UpdatedAt)
+		).Scan(&tempData.ID, &tempData.Status, &tempData.SubmittedAt, &tempData.UpdatedAt)
 
 		if err != nil {
 			return fmt.Errorf("failed to update payment: %w", err)

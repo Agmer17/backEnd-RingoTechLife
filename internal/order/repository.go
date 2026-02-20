@@ -192,7 +192,19 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 			'[]'
 		) AS items,
 
-		to_jsonb(p) AS payment
+		jsonb_build_object(
+			'id', p.id,
+			'order_id', p.order_id,
+			'status', p.status,
+			'amount', p.amount::float,
+			'proof_image', p.proof_image,
+			'admin_note', p.admin_note,
+			'verified_by', p.verified_by,
+			'created_at', p.created_at AT TIME ZONE 'UTC',
+			'updated_at', p.updated_at AT TIME ZONE 'UTC',
+			'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+			'verified_at', p.verified_at AT TIME ZONE 'UTC'
+		)
 
 	FROM orders o
 	LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -204,6 +216,7 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 	var order model.Order
 	var itemsJSON []byte
 	var paymentJSON []byte
+
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&order.ID,
 		&order.UserID,
@@ -226,19 +239,21 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 		return nil, err
 	}
 
+	// Unmarshal items
 	if err := json.Unmarshal(itemsJSON, &order.Items); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal items: %w", err)
 	}
 
+	// Unmarshal payment (optional)
 	if paymentJSON != nil {
 		var payment model.Payment
+		fmt.Println(string(paymentJSON))
 		if err := json.Unmarshal(paymentJSON, &payment); err == nil {
 			order.Payment = &payment
 		}
 	}
 
 	return &order, nil
-
 }
 
 func (r *OrderRepositoryImpl) GetByUserID(
