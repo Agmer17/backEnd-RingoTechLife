@@ -34,7 +34,7 @@ func (p *ProductsService) Create(ctx context.Context, product dto.CreateProductR
 		return model.Product{}, []*model.ProductImage{}, common.NewErrorResponse(400, "gagal convert form data!"+err.Error())
 	}
 
-	fmt.Println(productModel)
+	// fmt.Println(productModel)
 	data, err := p.repo.Create(ctx, &productModel)
 	if err != nil {
 		if errors.Is(err, ErrConflictSlugName) {

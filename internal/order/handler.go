@@ -73,6 +73,26 @@ func (th *OrderHandler) GetAllOfMyOrder(w http.ResponseWriter, r *http.Request) 
 
 }
 
+func (th *OrderHandler) GetOrderById(w http.ResponseWriter, r *http.Request) {
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		pkg.JSONError(w, 400, "id tidak valid!")
+		return
+	}
+
+	userId, _ := middleware.GetUserID(r.Context())
+
+	data, getErr := th.orderService.GetByOrderId(r.Context(), id, userId)
+
+	if getErr != nil {
+		pkg.JSONError(w, getErr.Code, getErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data!", data)
+}
+
 func (th *OrderHandler) SetUpRoute(router chi.Router) {
 
 	router.Route("/orders", func(r chi.Router) {
@@ -91,6 +111,7 @@ func (th *OrderHandler) SetUpRoute(router chi.Router) {
 
 		r.Post("/create-order", th.CreateOrderHandler)
 		r.Get("/my-orders", th.GetAllOfMyOrder)
+		r.Get("/id/{id}", th.GetOrderById)
 
 	})
 

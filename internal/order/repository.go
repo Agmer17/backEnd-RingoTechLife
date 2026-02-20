@@ -6,12 +6,15 @@ import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrNoOrderFound = errors.New("No order found!")
 
 type OrderRepositoryInterface interface {
 	Create(ctx context.Context, order *model.Order, items []model.OrderItem) (*model.Order, error)
@@ -158,78 +161,84 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 	ctx context.Context,
 	id uuid.UUID,
 ) (*model.Order, error) {
-	// Get order basic info
-	order, err := r.GetByID(ctx, id)
+
+	query := `
+	SELECT
+		o.id,
+		o.user_id,
+		o.status,
+		o.subtotal,
+		o.total_amount,
+		o.notes,
+		o.created_at,
+		o.updated_at,
+		o.confirmed_at,
+		o.cancelled_at,
+
+		COALESCE(
+			json_agg(
+				jsonb_build_object(
+					'id', oi.id,
+					'order_id', oi.order_id,
+					'product_id', oi.product_id,
+					'product_name', oi.product_name,
+					'product_sku', oi.product_sku,
+					'price_at_purchase', oi.price_at_purchase,
+					'quantity', oi.quantity,
+					'subtotal', oi.subtotal,
+					'created_at', oi.created_at AT TIME ZONE 'UTC'
+				)
+			) FILTER (WHERE oi.id IS NOT NULL),
+			'[]'
+		) AS items,
+
+		to_jsonb(p) AS payment
+
+	FROM orders o
+	LEFT JOIN order_items oi ON oi.order_id = o.id
+	LEFT JOIN payments p ON p.order_id = o.id
+	WHERE o.id = $1
+	GROUP BY o.id, p.id
+	`
+
+	var order model.Order
+	var itemsJSON []byte
+	var paymentJSON []byte
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&order.ID,
+		&order.UserID,
+		&order.Status,
+		&order.Subtotal,
+		&order.TotalAmount,
+		&order.Notes,
+		&order.CreatedAt,
+		&order.UpdatedAt,
+		&order.ConfirmedAt,
+		&order.CancelledAt,
+		&itemsJSON,
+		&paymentJSON,
+	)
+
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &model.Order{}, ErrNoOrderFound
+		}
 		return nil, err
 	}
 
-	// Get order items
-	itemsQuery := `
-		SELECT id, order_id, product_id, product_name, product_sku,
-		       price_at_purchase, quantity, subtotal, created_at
-		FROM order_items
-		WHERE order_id = $1
-		ORDER BY created_at ASC
-	`
-	rows, err := r.db.Query(ctx, itemsQuery, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get order items: %w", err)
+	if err := json.Unmarshal(itemsJSON, &order.Items); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal items: %w", err)
 	}
-	defer rows.Close()
 
-	var items []model.OrderItem
-	for rows.Next() {
-		var item model.OrderItem
-		err := rows.Scan(
-			&item.ID,
-			&item.OrderID,
-			&item.ProductID,
-			&item.ProductName,
-			&item.ProductSKU,
-			&item.PriceAtPurchase,
-			&item.Quantity,
-			&item.Subtotal,
-			&item.CreatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan order item: %w", err)
+	if paymentJSON != nil {
+		var payment model.Payment
+		if err := json.Unmarshal(paymentJSON, &payment); err == nil {
+			order.Payment = &payment
 		}
-		items = append(items, item)
 	}
 
-	// Get payment info
-	paymentQuery := `
-		SELECT id, order_id, status, amount, proof_image, admin_note, verified_by,
-		       created_at, updated_at, submitted_at, verified_at
-		FROM payments
-		WHERE order_id = $1
-		LIMIT 1
-	`
-	var payment model.Payment
-	err = r.db.QueryRow(ctx, paymentQuery, id).Scan(
-		&payment.ID,
-		&payment.OrderID,
-		&payment.Status,
-		&payment.Amount,
-		&payment.ProofImage,
-		&payment.AdminNote,
-		&payment.VerifiedBy,
-		&payment.CreatedAt,
-		&payment.UpdatedAt,
-		&payment.SubmittedAt,
-		&payment.VerifiedAt,
-	)
-	if err != nil && err != pgx.ErrNoRows {
-		return nil, fmt.Errorf("failed to get payment: %w", err)
-	}
+	return &order, nil
 
-	order.Items = items
-	if err != pgx.ErrNoRows {
-		order.Payment = &payment
-	}
-
-	return order, nil
 }
 
 func (r *OrderRepositoryImpl) GetByUserID(

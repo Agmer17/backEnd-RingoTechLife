@@ -5,6 +5,7 @@ import (
 	"backEnd-RingoTechLife/internal/common/model"
 	"backEnd-RingoTechLife/internal/products"
 	"context"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -97,5 +98,23 @@ func (o *OrderService) GetAllOrderByUserId(ctx context.Context, userId uuid.UUID
 		return []model.Order{}, common.NewErrorResponse(500, "gagal mengambil data di database!"+err.Error())
 	}
 	return data, nil
+}
+
+func (o *OrderService) GetByOrderId(ctx context.Context, orderId uuid.UUID, userID uuid.UUID) (model.Order, *common.ErrorResponse) {
+
+	data, err := o.orderRepo.GetByIDWithDetails(ctx, orderId)
+
+	if err != nil {
+		if errors.Is(err, ErrNoOrderFound) {
+			return model.Order{}, common.NewErrorResponse(404, "order tidak ditemukan!")
+		}
+		return model.Order{}, common.NewErrorResponse(500, "gagal mengambil data di database "+err.Error())
+	}
+
+	if data.UserID != userID {
+		return model.Order{}, common.NewErrorResponse(401, "kamu tidak bisa mengakses data ini!")
+	}
+
+	return *data, nil
 
 }
