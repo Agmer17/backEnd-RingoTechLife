@@ -34,3 +34,9 @@ type CreateReviewRequest struct {
 	Rating    int16   `json:"rating" validate:"required,min=1,max=5"`
 	Comment   *string `json:"comment" validate:"omitempty"`
 }
+
+type MyReviewData struct {
+	ReviewDetail
+	ProductThumbnail string `json:"product_thumbnail"`
+	ProductName      string `json:"product_name"`
+}

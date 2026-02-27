@@ -2,3 +2,4 @@
 __storage/
 tmp/
 
+*.exe

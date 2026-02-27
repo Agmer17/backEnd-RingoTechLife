@@ -7,6 +7,7 @@ import (
 	"backEnd-RingoTechLife/internal/storage"
 	"context"
 	"errors"
+	"fmt"
 	"mime/multipart"
 
 	"github.com/google/uuid"
@@ -129,12 +130,15 @@ func (s *UserService) Update(
 	var newFname string
 
 	if req.ProfilePicture != nil {
-		newFname, err = s.processProfilePics(req.ProfilePicture)
+		newFname, err := s.processProfilePics(req.ProfilePicture)
 		if err != nil {
+			fmt.Println("error di service update")
 			return model.User{}, common.NewErrorResponse(400, "gagal menyimpan file! hanya kirim file gambar!")
 		}
 		userData.ProfilePicture = &newFname
 	}
+
+	// fmt.Println(*req.Password)
 
 	if req.Password != nil {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*req.Password), 10)
@@ -238,7 +242,9 @@ func (s *UserService) processProfilePics(f *multipart.FileHeader) (string, error
 
 	ext, ok := s.FileStorage.IsTypeSupportted(mimeType)
 
+	fmt.Println("ini ok ga bang ", ok)
 	if !ok {
+		fmt.Println("ini error kejadian")
 		return "", UnsupportedFileType
 	}
 

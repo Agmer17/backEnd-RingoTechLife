@@ -2,12 +2,12 @@ package pkg
 
 import (
 	"regexp"
-	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
 
 var slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+var phoneRegex = regexp.MustCompile(`^(?:\+62|62|0)8[1-9][0-9]{7,11}$`)
 
 func validationMessage(e validator.FieldError) string {
 	switch e.Tag() {
@@ -28,7 +28,7 @@ func validationMessage(e validator.FieldError) string {
 
 func PhoneID(fl validator.FieldLevel) bool {
 	phone := fl.Field().String()
-	return strings.HasPrefix(phone, "08") && len(phone) >= 10
+	return phoneRegex.MatchString(phone)
 }
 
 func ValidationErrorsToMap(err error) map[string]string {

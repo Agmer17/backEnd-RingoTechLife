@@ -3,7 +3,9 @@ package middleware
 import (
 	"backEnd-RingoTechLife/pkg"
 	"context"
+	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -24,6 +26,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Extract token dari header
 		token, err := pkg.GetAccessToken(authHeader)
 		if err != nil {
+			fmt.Print("kenapa bisa error disini anjing ", err)
 			pkg.JSONError(w, 401, err.Error())
 			return
 		}
@@ -34,12 +37,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			pkg.JSONError(w, 401, "token tidak valid atau kadaluarsa")
 			return
 		}
-
-		// Simpan user info ke context
 		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 		ctx = context.WithValue(ctx, RoleKey, claims.Role)
-
-		// Lanjutkan ke handler berikutnya
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -47,20 +46,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			role, ok := r.Context().Value(RoleKey).(string)
+			role, ok := GetRole(r.Context())
 			if !ok {
+				fmt.Println(role)
 				pkg.JSONError(w, http.StatusForbidden, "Kamu harus login sebelum bisa mengakses fitur ini")
 				return
 			}
-
-			// Cek apakah role user termasuk dalam allowed roles
-			allowed := false
-			for _, allowedRole := range allowedRoles {
-				if role == allowedRole {
-					allowed = true
-					break
-				}
-			}
+			allowed := slices.Contains(allowedRoles, role)
 
 			if !allowed {
 				pkg.JSONError(w, http.StatusForbidden, "Kamu tidak punya akses ke fitur ini")
@@ -70,6 +62,31 @@ func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func AuthMiddlewareFromCookie(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("access_token")
+		fmt.Println(cookie)
+		if err != nil {
+			if err == http.ErrNoCookie {
+				pkg.JSONError(w, 401, "no cookie found!")
+				return
+			}
+			pkg.JSONError(w, 400, "terjadi kesalahan saat membaca cookie")
+			return
+		}
+
+		claims, err := pkg.VerifyRefreshToken(cookie.Value)
+		if err != nil {
+			pkg.JSONError(w, 401, "token tidak valid atau kadaluarsa")
+			return
+		}
+		fmt.Println(claims)
+		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserId)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func GetUserID(ctx context.Context) (uuid.UUID, bool) {

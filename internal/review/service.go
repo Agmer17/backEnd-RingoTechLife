@@ -126,3 +126,41 @@ func (r *ReviewService) Update(ctx context.Context, reviewId uuid.UUID, userId u
 
 	return *data, nil
 }
+
+func (r *ReviewService) GetReviewFromUser(ctx context.Context, userId uuid.UUID) ([]*dto.MyReviewData, *common.ErrorResponse) {
+
+	data, err := r.reviewRepo.GetDetailsByUserID(ctx, userId)
+	if err != nil {
+		return []*dto.MyReviewData{}, common.NewErrorResponse(500, "gagal mengambil data di database "+err.Error())
+	}
+
+	return data, nil
+}
+
+func (r *ReviewService) DeleteCurrentUserReview(ctx context.Context, reviewId uuid.UUID, userId uuid.UUID) *common.ErrorResponse {
+
+	data, err := r.reviewRepo.GetDetailByID(ctx, reviewId)
+	if err != nil {
+		if errors.Is(err, ErrReviewNotFound) {
+			return common.NewErrorResponse(404, "review tidak ditemukan!")
+		}
+		return common.NewErrorResponse(500, "internal server error!")
+	}
+
+	if userId != data.User.ID {
+		return common.NewErrorResponse(401, "kamu tidak bisa menghapus review ini!")
+	}
+
+	err = r.reviewRepo.Delete(ctx, reviewId)
+
+	if err != nil {
+		if errors.Is(err, ErrReviewNotFound) {
+			return common.NewErrorResponse(404, "review tidak ditemukan!")
+		}
+
+		return common.NewErrorResponse(500, "internal server error! gagal mengambil data ke database")
+	}
+
+	return nil
+
+}

@@ -29,7 +29,7 @@ func JwtInit(secret string) {
 }
 
 func GenerateToken(userID uuid.UUID, role string, limit int) (string, error) {
-	expirationTime := time.Now().Add(time.Duration(limit) * time.Minute)
+	expirationTime := time.Now().Add(time.Duration(limit) * time.Hour)
 
 	claims := &Claims{
 		UserID: userID,

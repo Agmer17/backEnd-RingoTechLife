@@ -3,8 +3,10 @@ package auth
 import (
 	"backEnd-RingoTechLife/internal/common"
 	"backEnd-RingoTechLife/internal/common/dto"
+	"backEnd-RingoTechLife/internal/middleware"
 	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -68,15 +70,32 @@ func (h *AuthHandler) SignupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	successRes, err := h.AuthService.SignUp(r.Context(), req)
-
-	if err != nil {
-		pkg.JSONError(w, err.Code, err.Message)
+	successRes, signUpErr := h.AuthService.SignUp(r.Context(), req)
+	if signUpErr != nil {
+		pkg.JSONError(w, signUpErr.Code, signUpErr.Message)
 		return
 	}
 
 	pkg.JSONSuccess(w, 200, successRes.Message, successRes.Data)
 
+}
+
+func (h *AuthHandler) RefreshSessionHandler(w http.ResponseWriter, r *http.Request) {
+	userId, ok := middleware.GetUserID(r.Context())
+	fmt.Println(userId)
+
+	if !ok {
+		pkg.JSONError(w, 401, "sesi kamu sudah habis! silahkan login ulang!")
+		return
+	}
+
+	userData, err := h.AuthService.GetRefreshSession(r.Context(), userId)
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil memperbarui sessi", userData)
 }
 
 func (h *AuthHandler) SetUpRoute(router chi.Router) {
@@ -100,5 +119,10 @@ func (h *AuthHandler) SetUpRoute(router chi.Router) {
 
 		r.Post("/login", h.LoginHandler)
 		r.Post("/sign-up", h.SignupHandler)
+
+		r.Group(func(authRoutes chi.Router) {
+			authRoutes.Use(middleware.AuthMiddlewareFromCookie)
+			authRoutes.Get("/refresh-session", h.RefreshSessionHandler)
+		})
 	})
 }

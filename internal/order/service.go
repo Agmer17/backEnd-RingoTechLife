@@ -68,7 +68,7 @@ func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, 
 	o.muTransactionsData.Lock()
 	defer o.muTransactionsData.Unlock()
 	// buat timer untuk cancel ordernya!
-	orderDeadline := time.AfterFunc(2*time.Minute, func() {
+	orderDeadline := time.AfterFunc(1*time.Minute, func() {
 		o.muTransactionsData.Lock()
 		defer o.muTransactionsData.Unlock()
 

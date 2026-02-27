@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -96,26 +97,42 @@ func (r *UserRepositoryImpl) Update(
 	user *model.User,
 ) (*model.User, error) {
 
-	query := `
+	setClauses := []string{
+		"full_name = $1",
+		"email = $2",
+		"phone_number = $3",
+		"role = $4",
+		"profile_picture = $5",
+	}
+
+	args := []any{
+		user.FullName,
+		user.Email,
+		user.PhoneNumber,
+		user.Role,
+		user.ProfilePicture,
+	}
+
+	argPos := 6
+
+	// Jika password ada, tambahkan ke query
+	if user.Password != "" {
+		setClauses = append(setClauses, fmt.Sprintf("password = $%d", argPos))
+		args = append(args, user.Password)
+		argPos++
+	}
+
+	query := fmt.Sprintf(`
 		UPDATE users 
-		SET full_name = $1,
-		    email = $2,
-		    phone_number = $3,
-		    role = $4,
-		    profile_picture = $5
-		WHERE id = $6
+		SET %s
+		WHERE id = $%d
 		RETURNING created_at
-	`
+	`, strings.Join(setClauses, ", "), argPos)
+
+	args = append(args, user.ID)
 
 	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, query,
-			user.FullName,
-			user.Email,
-			user.PhoneNumber,
-			user.Role,
-			user.ProfilePicture,
-			user.ID,
-		).Scan(&user.CreatedAt)
+		return tx.QueryRow(ctx, query, args...).Scan(&user.CreatedAt)
 	})
 
 	if err != nil {

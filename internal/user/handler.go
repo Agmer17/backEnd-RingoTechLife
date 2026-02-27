@@ -81,11 +81,15 @@ func (h *UserHandler) UpdateCurrentUserHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
+	if len(r.MultipartForm.File) != 0 {
+		req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
+	}
 
 	// Update user
 	updatedUser, errUpdate := h.UserService.Update(r.Context(), req, userID)
 	if errUpdate != nil {
+		pkg.JSONError(w, errUpdate.Code, errUpdate.Message)
+		return
 
 	}
 
@@ -154,11 +158,15 @@ func (h *UserHandler) UpdateUserByIDHandler(w http.ResponseWriter, r *http.Reque
 	var req dto.UpdateUserRequest
 	req.ID = userID
 
-	req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
+	if err := h.decoder.Decode(&req, r.MultipartForm.Value); err != nil {
+		req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
+	}
 
 	// Update user
 	updatedUser, errUpdate := h.UserService.Update(r.Context(), req, userID)
 	if errUpdate != nil {
+		pkg.JSONError(w, errUpdate.Code, errUpdate.Message)
+		return
 
 	}
 
@@ -243,8 +251,8 @@ func (h *UserHandler) SetUpRoute(router chi.Router) {
 		))
 
 		// User endpoints (authenticated users only)
+		r.Use(middleware.AuthMiddleware)
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.AuthMiddleware)
 
 			r.Get("/profile/me", h.GetCurrentUserHandler)
 			r.Put("/profile", h.UpdateCurrentUserHandler)
@@ -253,7 +261,6 @@ func (h *UserHandler) SetUpRoute(router chi.Router) {
 
 		// Admin endpoints (admin only)
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.AuthMiddleware)
 			r.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
 
 			r.Get("/id/{id}", h.GetUserByIDHandler)

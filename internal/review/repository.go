@@ -52,7 +52,11 @@ type ReviewRepository interface {
 	// Detail (JOIN dengan tabel users)
 	GetAllDetails(ctx context.Context) ([]*dto.ReviewDetail, error)
 	GetDetailByID(ctx context.Context, id uuid.UUID) (*dto.ReviewDetail, error)
-	GetDetailsByUserID(ctx context.Context, userID uuid.UUID) ([]*dto.ReviewDetail, error)
+
+	//  yg ini khusus join juga sama tabel product
+	GetDetailsByUserID(ctx context.Context, userID uuid.UUID) ([]*dto.MyReviewData, error)
+	//  -----
+
 	GetAllDetailsProdId(ctx context.Context, productId uuid.UUID) ([]dto.ReviewDetail, error)
 
 	// buat yang join sama table products, nanti di bikin aja methodnya
@@ -266,9 +270,33 @@ func (r *ReviewRepositoryImpl) GetDetailByID(
 func (r *ReviewRepositoryImpl) GetDetailsByUserID(
 	ctx context.Context,
 	userID uuid.UUID,
-) ([]*dto.ReviewDetail, error) {
+) ([]*dto.MyReviewData, error) {
 
-	query := reviewDetailQuery + `WHERE r.user_id = $1 ORDER BY r.created_at DESC`
+	query := `
+		SELECT 
+			r.id,
+			r.product_id,
+			r.rating,
+			r.comment,
+			r.created_at,
+
+			u.id,
+			u.full_name,
+			u.profile_picture,
+
+			p.name,
+			pi.image_url
+
+		FROM reviews r
+		JOIN users u ON u.id = r.user_id
+		JOIN products p ON p.id = r.product_id
+		LEFT JOIN product_images pi 
+			ON pi.product_id = p.id 
+			AND pi.is_primary = TRUE
+
+		WHERE r.user_id = $1
+		ORDER BY r.created_at DESC
+	`
 
 	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
@@ -276,13 +304,33 @@ func (r *ReviewRepositoryImpl) GetDetailsByUserID(
 	}
 	defer rows.Close()
 
-	var results []*dto.ReviewDetail
+	var results []*dto.MyReviewData
+
 	for rows.Next() {
-		d, err := scanReviewDetail(rows)
+		var data dto.MyReviewData
+
+		err := rows.Scan(
+			// Review
+			&data.ID,
+			&data.ProductID,
+			&data.Rating,
+			&data.Comment,
+			&data.CreatedAt,
+
+			// User
+			&data.User.ID,
+			&data.User.FullName,
+			&data.User.ProfilePicture,
+
+			// Product
+			&data.ProductName,
+			&data.ProductThumbnail,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("scan review detail row failed: %w", err)
 		}
-		results = append(results, d)
+
+		results = append(results, &data)
 	}
 
 	if err = rows.Err(); err != nil {

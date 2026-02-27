@@ -132,6 +132,50 @@ func (rh *ReviewHandler) UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (rh *ReviewHandler) GetAllUserReviewHandler(w http.ResponseWriter, r *http.Request) {
+
+	userId, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		pkg.JSONError(w, 401, "Harap logi terlebih dahulu sebelum mengakses fitur ini")
+		return
+	}
+
+	data, err := rh.reviewService.GetReviewFromUser(r.Context(), userId)
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+
+}
+
+func (rh *ReviewHandler) DeleteMyReviewHandler(w http.ResponseWriter, r *http.Request) {
+
+	deletedProductId, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		pkg.JSONError(w, 400, "id review tidak valid!")
+		return
+	}
+
+	userId, ok := middleware.GetUserID(r.Context())
+
+	if !ok {
+		pkg.JSONError(w, 401, "sesi kamu sudah habis!")
+		return
+	}
+
+	delErr := rh.reviewService.DeleteCurrentUserReview(r.Context(), deletedProductId, userId)
+
+	if delErr != nil {
+		pkg.JSONError(w, delErr.Code, delErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil menghapus data", nil)
+
+}
+
 func (rh *ReviewHandler) SetupRoute(router chi.Router) {
 
 	router.Route("/reviews", func(r chi.Router) {
@@ -143,6 +187,8 @@ func (rh *ReviewHandler) SetupRoute(router chi.Router) {
 
 			r.Post("/create", rh.HandlerCreate)
 			r.Put("/update/{id}", rh.UpdateHandler)
+			r.Get("/get-my-review", rh.GetAllUserReviewHandler)
+			r.Delete("/delete-my-review/{id}", rh.DeleteMyReviewHandler)
 
 		})
 

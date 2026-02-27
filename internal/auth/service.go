@@ -6,9 +6,11 @@ import (
 	"backEnd-RingoTechLife/internal/user"
 	"backEnd-RingoTechLife/pkg"
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -17,6 +19,12 @@ const SevenDays = 7 * 24 * 60 * 60
 type SignupResponse struct {
 	FullName  string    `json:"full_name"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type refreshSessionRes struct {
+	Id          uuid.UUID `json:"id"`
+	Role        string    `json:"role"`
+	AccessToken string    `json:"access_token"`
 }
 
 type AuthService struct {
@@ -53,6 +61,7 @@ func (a *AuthService) Login(ctx context.Context, req LoginRequest, w http.Respon
 	hashErr := bcrypt.CompareHashAndPassword([]byte(userData.Password), []byte(req.Password))
 
 	if hashErr != nil {
+		fmt.Println(hashErr)
 		return common.SuccessResponse{}, common.NewErrorResponse(401, "password salah!")
 	}
 
@@ -64,7 +73,7 @@ func (a *AuthService) Login(ctx context.Context, req LoginRequest, w http.Respon
 		return common.SuccessResponse{}, common.NewErrorResponse(500, "gagal generate token")
 	}
 
-	token, err := pkg.GenerateToken(userData.ID, userData.Role, 60)
+	token, err := pkg.GenerateToken(userData.ID, userData.Role, 4)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
@@ -104,5 +113,27 @@ func (a *AuthService) SignUp(ctx context.Context, req dto.CreateUserRequest) (co
 	}
 
 	return successResponse, nil
+
+}
+
+func (a *AuthService) GetRefreshSession(ctx context.Context, id uuid.UUID) (refreshSessionRes, *common.ErrorResponse) {
+
+	userData, err := a.UserService.GetByID(ctx, id)
+	if err != nil {
+		return refreshSessionRes{}, err
+	}
+
+	token, genErr := pkg.GenerateToken(id, userData.Role, 4)
+	if genErr != nil {
+		return refreshSessionRes{}, common.NewErrorResponse(500, "gagal membuat refresh token!")
+	}
+
+	resp := refreshSessionRes{
+		Id:          id,
+		Role:        userData.Role,
+		AccessToken: token,
+	}
+
+	return resp, nil
 
 }
