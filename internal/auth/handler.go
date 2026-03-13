@@ -82,7 +82,7 @@ func (h *AuthHandler) SignupHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) RefreshSessionHandler(w http.ResponseWriter, r *http.Request) {
 	userId, ok := middleware.GetUserID(r.Context())
-	fmt.Println(userId)
+	fmt.Println("data user id : ", userId)
 
 	if !ok {
 		pkg.JSONError(w, 401, "sesi kamu sudah habis! silahkan login ulang!")
@@ -96,6 +96,21 @@ func (h *AuthHandler) RefreshSessionHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	pkg.JSONSuccess(w, 200, "berhasil memperbarui sessi", userData)
+}
+
+func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+
+	pkg.JSONSuccess(w, 200, "ok", nil)
 }
 
 func (h *AuthHandler) SetUpRoute(router chi.Router) {
@@ -119,6 +134,7 @@ func (h *AuthHandler) SetUpRoute(router chi.Router) {
 
 		r.Post("/login", h.LoginHandler)
 		r.Post("/sign-up", h.SignupHandler)
+		r.Get("/logout", h.LogoutHandler)
 
 		r.Group(func(authRoutes chi.Router) {
 			authRoutes.Use(middleware.AuthMiddlewareFromCookie)

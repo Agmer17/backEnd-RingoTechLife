@@ -119,6 +119,7 @@ func (s *UserService) Update(
 	//dibawah tinggal handle kalo gagal diapus aja filenya!
 	var oldProfilePic *string
 	if userData.ProfilePicture != nil {
+		fmt.Println("ada file baru disimpen?")
 		tmp := *userData.ProfilePicture
 		oldProfilePic = &tmp
 	}
@@ -131,6 +132,7 @@ func (s *UserService) Update(
 
 	if req.ProfilePicture != nil {
 		newFname, err := s.processProfilePics(req.ProfilePicture)
+		fmt.Println("memek : ", newFname)
 		if err != nil {
 			fmt.Println("error di service update")
 			return model.User{}, common.NewErrorResponse(400, "gagal menyimpan file! hanya kirim file gambar!")
@@ -147,6 +149,8 @@ func (s *UserService) Update(
 		}
 
 		userData.Password = string(hashedPassword)
+
+		fmt.Println("\n\n\n\n\n\n hashed password abis update : ", string(hashedPassword))
 	}
 
 	// ================= SAVE =================

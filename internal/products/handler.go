@@ -198,6 +198,7 @@ func (ph *ProductsHandler) UpdateProductsHandler(w http.ResponseWriter, r *http.
 	}
 
 	updateReq.NewProductImages = r.MultipartForm.File["new_product_images"]
+
 	for _, fileHeader := range updateReq.NewProductImages {
 		if fileHeader.Size > maxFileSize {
 			pkg.JSONError(w, 400, "gambar terlalu besar! maksimal 4mb pergambar!")
@@ -242,6 +243,20 @@ func (ph *ProductsHandler) GetProductByStatus(w http.ResponseWriter, r *http.Req
 	pkg.JSONSuccess(w, 200, "berhasil mengambil data produk!", data)
 }
 
+func (ph *ProductsHandler) GetSearchProducts(w http.ResponseWriter, r *http.Request) {
+	search := r.URL.Query().Get("q")
+
+	data, searchErr := ph.service.SearchProductQuery(r.Context(), search)
+
+	if searchErr != nil {
+		pkg.JSONError(w, searchErr.Code, searchErr.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+
+}
+
 func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 
 	r.Route("/products", func(r chi.Router) {
@@ -252,6 +267,7 @@ func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 
 		r.Get("/category/{cat}", ph.GetByCategory)
 		r.Get("/get", ph.GetProductByStatus)
+		r.Get("/search", ph.GetSearchProducts)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)

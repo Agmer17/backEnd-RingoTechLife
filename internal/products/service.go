@@ -29,6 +29,7 @@ func NewProductsService(rp *ProductRepositoryImpl, fs *storage.FileStorage, img 
 }
 
 func (p *ProductsService) Create(ctx context.Context, product dto.CreateProductRequest) (model.Product, []*model.ProductImage, *common.ErrorResponse) {
+
 	productModel, err := dto.NewProductFromCreateRequest(product)
 	if err != nil {
 		return model.Product{}, []*model.ProductImage{}, common.NewErrorResponse(400, "gagal convert form data!"+err.Error())
@@ -84,9 +85,12 @@ func (p *ProductsService) DeleteProducts(ctx context.Context, id uuid.UUID) *com
 
 	err := p.repo.Delete(ctx, id)
 	if err != nil {
-
 		if errors.Is(err, ErrProductNotFound) {
 			return common.NewErrorResponse(404, "produk tidak ditemukan!")
+		}
+
+		if errors.Is(err, ErrProductInUse) {
+			return common.NewErrorResponse(409, err.Error())
 		}
 
 		return common.NewErrorResponse(500, "gagal menghapus data!")
@@ -143,11 +147,15 @@ func (p *ProductsService) UpdateProducts(ctx context.Context, reqData dto.Update
 
 	oldData, err := p.repo.GetByID(ctx, id)
 
-	if err != nil {
+	fmt.Println("category baru : ", reqData.CategoryId)
 
+	fmt.Println("old data category : ", oldData.CategoryID)
+	if err != nil {
 		if errors.Is(err, ErrProductNotFound) {
 			return model.Product{}, common.NewErrorResponse(400, "product tidak ditemukan!")
 		}
+
+		fmt.Println("error : ", err.Error())
 		return model.Product{}, common.NewErrorResponse(500, "gagal mengambil data di database")
 	}
 
@@ -157,6 +165,8 @@ func (p *ProductsService) UpdateProducts(ctx context.Context, reqData dto.Update
 	}
 
 	// udah di apply changes di old data
+	//
+	fmt.Println("old data abis apply update : ", oldData.CategoryID)
 	updatedData, err := p.repo.Update(ctx, &oldData)
 
 	if err != nil {
@@ -172,7 +182,7 @@ func (p *ProductsService) UpdateProducts(ctx context.Context, reqData dto.Update
 			return model.Product{}, common.NewErrorResponse(404, err.Error()+" operasi dibatalkan")
 		}
 
-		return model.Product{}, common.NewErrorResponse(500, "gagal mengupdate data di database!")
+		return model.Product{}, common.NewErrorResponse(500, "gagal mengupdate data di database! "+err.Error())
 	}
 
 	if len(reqData.UpdatedImage) != 0 {
@@ -252,14 +262,30 @@ func (p *ProductsService) GetProductByStatus(ctx context.Context, status string)
 
 }
 
+func (p *ProductsService) SearchProductQuery(ctx context.Context, query string) ([]model.Product, *common.ErrorResponse) {
+
+	data, err := p.repo.SearchProducts(ctx, query)
+	if err != nil {
+		return []model.Product{}, common.NewErrorResponse(500, "Terjadi kesalahan di server! "+err.Error())
+	}
+
+	return data, nil
+
+}
+
 func applyUpdateProductRequest(p *model.Product, req *dto.UpdateProductsRequest) error {
-	// CategoryID (string → uuid.UUID)
 	if req.CategoryId != nil {
-		parsedUUID, err := uuid.Parse(*req.CategoryId)
-		if err != nil {
-			return fmt.Errorf("invalid category id: %w", err)
+
+		if len(*req.CategoryId) == 0 {
+			p.CategoryID = nil
+		} else {
+			parsedUUID, err := uuid.Parse(*req.CategoryId)
+			if err != nil {
+				return fmt.Errorf("invalid category id: %w", err)
+			}
+			p.CategoryID = &parsedUUID
 		}
-		p.CategoryID = parsedUUID
+
 	}
 
 	// Name

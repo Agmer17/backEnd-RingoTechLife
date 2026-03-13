@@ -162,5 +162,14 @@ func (r *ReviewService) DeleteCurrentUserReview(ctx context.Context, reviewId uu
 	}
 
 	return nil
+}
 
+func (r *ReviewService) GetAllReview(ctx context.Context) ([]*dto.ReviewDetail, *common.ErrorResponse) {
+
+	data, err := r.reviewRepo.GetAllDetails(ctx)
+	if err != nil {
+		return []*dto.ReviewDetail{}, common.NewErrorResponse(500, "gagal mengambil data reveiw")
+	}
+
+	return data, nil
 }

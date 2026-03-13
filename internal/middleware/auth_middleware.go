@@ -26,7 +26,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Extract token dari header
 		token, err := pkg.GetAccessToken(authHeader)
 		if err != nil {
-			fmt.Print("kenapa bisa error disini anjing ", err)
+			fmt.Print("\nkenapa bisa error disini anjing ", err, "\n")
 			pkg.JSONError(w, 401, err.Error())
 			return
 		}
@@ -67,7 +67,7 @@ func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 func AuthMiddlewareFromCookie(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("access_token")
-		fmt.Println(cookie)
+		fmt.Println("cookie ada ga : ", cookie)
 		if err != nil {
 			if err == http.ErrNoCookie {
 				pkg.JSONError(w, 401, "no cookie found!")

@@ -1,6 +1,7 @@
 package category
 
 import (
+	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
 	"fmt"
@@ -17,7 +18,7 @@ type CategoryRepositoryInterface interface {
 	GetByName(ctx context.Context, name string) (model.Category, error)
 	Update(ctx context.Context, category *model.Category) (*model.Category, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	GetAllCategories(ctx context.Context) ([]model.Category, error)
+	GetAllCategories(ctx context.Context) ([]dto.DetailCategoryResponse, error)
 	ExistsBySlug(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
 	ExistsByName(ctx context.Context, name string, excludeID *uuid.UUID) (bool, error)
 	ExistByNameOrSlug(ctx context.Context, name string, slug string, excludeID *uuid.UUID) (bool, error)
@@ -40,7 +41,7 @@ func (r *CategoryRepositoryImpl) Create(
 ) (*model.Category, error) {
 
 	query := `
-        INSERT INTO categories 
+        INSERT INTO categories
             (name, slug, description)
         VALUES ($1, $2, $3)
         RETURNING id, created_at
@@ -151,7 +152,7 @@ func (r *CategoryRepositoryImpl) Update(
 ) (*model.Category, error) {
 
 	query := `
-        UPDATE categories 
+        UPDATE categories
         SET name = $1,
             slug = $2,
             description = $3
@@ -197,10 +198,12 @@ func (r *CategoryRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
-func (r *CategoryRepositoryImpl) GetAllCategories(ctx context.Context) ([]model.Category, error) {
+func (r *CategoryRepositoryImpl) GetAllCategories(ctx context.Context) ([]dto.DetailCategoryResponse, error) {
 	query := `
-        SELECT id, name, slug, description, created_at
-        FROM categories
+        SELECT c.id, c.name, c.slug, c.description, count(p.id) as total_productss,c.created_at
+        FROM categories c
+        LEFT JOIN products p on p.category_id = c.id
+        GROUP BY c.id
         ORDER BY created_at DESC
     `
 
@@ -210,14 +213,15 @@ func (r *CategoryRepositoryImpl) GetAllCategories(ctx context.Context) ([]model.
 	}
 	defer rows.Close()
 
-	var categories []model.Category
+	var categories []dto.DetailCategoryResponse
 	for rows.Next() {
-		var c model.Category
+		var c dto.DetailCategoryResponse
 		err := rows.Scan(
 			&c.ID,
 			&c.Name,
 			&c.Slug,
 			&c.Description,
+			&c.ProductCount,
 			&c.CreatedAt,
 		)
 		if err != nil {

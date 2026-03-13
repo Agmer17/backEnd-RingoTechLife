@@ -10,7 +10,7 @@ import (
 )
 
 type CreateProductRequest struct {
-	CategoryId     string  `form:"product_category_id" validate:"required,uuid"`
+	CategoryId     *string `form:"product_category_id" validate:"omitempty"`
 	Name           string  `form:"product_name" validate:"required,min=3,alphanumspace"`
 	Slug           string  `form:"product_slug" validate:"required,max=150,slug"`
 	Description    *string `form:"product_description" validate:"omitempty"`
@@ -80,10 +80,15 @@ func NewProductFromCreateRequest(req CreateProductRequest) (model.Product, error
 		isFeatured = *req.IsFeatured
 	}
 
-	catId, err := uuid.Parse(req.CategoryId)
-
-	if err != nil {
-		return model.Product{}, err
+	var catId *uuid.UUID
+	if req.CategoryId != nil && *req.CategoryId != "" {
+		catParsed, parseError := uuid.Parse(*req.CategoryId)
+		if parseError != nil {
+			return model.Product{}, parseError
+		}
+		catId = &catParsed
+	} else {
+		catId = nil
 	}
 
 	return model.Product{

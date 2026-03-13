@@ -43,7 +43,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) {
 	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 
 	r.Use(httprate.Limit(
-		200,
+		500,
 		time.Minute,
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

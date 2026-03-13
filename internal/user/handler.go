@@ -81,6 +81,12 @@ func (h *UserHandler) UpdateCurrentUserHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if err := h.Validator.Struct(&req); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
 	if len(r.MultipartForm.File) != 0 {
 		req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
 	}
@@ -159,6 +165,18 @@ func (h *UserHandler) UpdateUserByIDHandler(w http.ResponseWriter, r *http.Reque
 	req.ID = userID
 
 	if err := h.decoder.Decode(&req, r.MultipartForm.Value); err != nil {
+		fmt.Println(err)
+		pkg.JSONError(w, 400, "form data tidak valid")
+		return
+	}
+
+	if err := h.Validator.Struct(&req); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	if len(r.MultipartForm.File) != 0 {
 		req.ProfilePicture = r.MultipartForm.File["profile_picture"][0]
 	}
 
@@ -239,7 +257,7 @@ func (h *UserHandler) SetUpRoute(router chi.Router) {
 	router.Route("/user", func(r chi.Router) {
 		// Rate limiting
 		r.Use(httprate.Limit(
-			30,
+			50,
 			time.Minute,
 			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")

@@ -61,7 +61,8 @@ func (a *AuthService) Login(ctx context.Context, req LoginRequest, w http.Respon
 	hashErr := bcrypt.CompareHashAndPassword([]byte(userData.Password), []byte(req.Password))
 
 	if hashErr != nil {
-		fmt.Println(hashErr)
+		fmt.Println("\n\n\n\n\n\n", hashErr)
+		fmt.Println("harusnya : ", userData.Password)
 		return common.SuccessResponse{}, common.NewErrorResponse(401, "password salah!")
 	}
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,7 @@ var ErrFkTagsConstraint = errors.New("Tag tidak ditemukan!")
 var ErrConflictSlugName = errors.New("Slug sudah tersedia di database!")
 var ErrNameConflict = errors.New("nama produk sudah terdaftar di database! masukan nama lainnnya")
 var ErrConflicSku = errors.New("Sku produk sudah tersedia di database! harap masukan yg lain!")
+var ErrProductInUse = errors.New("Produk tercatat di transaksi atau order! tidak dapat dihapus. Jika memang dibutuhkan coba buat produk inactive/draft")
 
 type ProductRepositoryInterface interface {
 	// Basic CRUD
@@ -153,7 +155,7 @@ func (r *ProductRepositoryImpl) GetDetailByID(
 				'[]'::json
 			) as reviews
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		LEFT JOIN reviews rv ON p.id = rv.product_id
 		LEFT JOIN users u ON rv.user_id = u.id
@@ -164,7 +166,11 @@ func (r *ProductRepositoryImpl) GetDetailByID(
 
 	var (
 		product     dto.ProductDetailResponse
-		cat         model.Category
+		catID       *uuid.UUID
+		catName     *string
+		catSlug     *string
+		catDesc     *string
+		catCreated  *time.Time
 		imagesJSON  []byte
 		reviewsJSON []byte
 	)
@@ -185,11 +191,11 @@ func (r *ProductRepositoryImpl) GetDetailByID(
 		&product.IsFeatured,
 		&product.Weight,
 		&product.CreatedAt,
-		&cat.ID,
-		&cat.Name,
-		&cat.Slug,
-		&cat.Description,
-		&cat.CreatedAt,
+		&catID,
+		&catName,
+		&catSlug,
+		&catDesc,
+		&catCreated,
 		&imagesJSON,
 		&reviewsJSON,
 	)
@@ -209,7 +215,15 @@ func (r *ProductRepositoryImpl) GetDetailByID(
 		return dto.ProductDetailResponse{}, fmt.Errorf("unmarshal reviews failed: %w", err)
 	}
 
-	product.Category = cat
+	if catID != nil {
+		product.Category = model.Category{
+			ID:          *catID,
+			Name:        *catName,
+			Slug:        *catSlug,
+			Description: catDesc,
+			CreatedAt:   *catCreated,
+		}
+	}
 
 	return product, nil
 }
@@ -239,7 +253,7 @@ func (r *ProductRepositoryImpl) GetByID(
 				'[]'::json
 			) as images
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		WHERE p.id = $1
 		GROUP BY p.id, c.id
@@ -248,7 +262,11 @@ func (r *ProductRepositoryImpl) GetByID(
 
 	var (
 		p          model.Product
-		cat        model.Category
+		catID      *uuid.UUID
+		catName    *string
+		catSlug    *string
+		catDesc    *string
+		catCreated *time.Time
 		imagesJSON []byte
 	)
 
@@ -268,11 +286,11 @@ func (r *ProductRepositoryImpl) GetByID(
 		&p.IsFeatured,
 		&p.Weight,
 		&p.CreatedAt,
-		&cat.ID,
-		&cat.Name,
-		&cat.Slug,
-		&cat.Description,
-		&cat.CreatedAt,
+		&catID,
+		&catName,
+		&catSlug,
+		&catDesc,
+		&catCreated,
 		&imagesJSON,
 	)
 
@@ -290,7 +308,15 @@ func (r *ProductRepositoryImpl) GetByID(
 		return model.Product{}, err
 	}
 
-	p.Category = cat
+	if catID != nil {
+		p.Category = &model.Category{
+			ID:          *catID,
+			Name:        *catName,
+			Slug:        *catSlug,
+			Description: catDesc,
+			CreatedAt:   *catCreated,
+		}
+	}
 
 	return p, nil
 }
@@ -336,7 +362,7 @@ func (r *ProductRepositoryImpl) GetBySlug(
 				'[]'::json
 			) as reviews
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		LEFT JOIN reviews rv ON p.id = rv.product_id
 		LEFT JOIN users u ON rv.user_id = u.id
@@ -347,7 +373,11 @@ func (r *ProductRepositoryImpl) GetBySlug(
 
 	var (
 		product     dto.ProductDetailResponse
-		cat         model.Category
+		catID       *uuid.UUID
+		catName     *string
+		catSlug     *string
+		catDesc     *string
+		catCreated  *time.Time
 		imagesJSON  []byte
 		reviewsJSON []byte
 	)
@@ -368,11 +398,11 @@ func (r *ProductRepositoryImpl) GetBySlug(
 		&product.IsFeatured,
 		&product.Weight,
 		&product.CreatedAt,
-		&cat.ID,
-		&cat.Name,
-		&cat.Slug,
-		&cat.Description,
-		&cat.CreatedAt,
+		&catID,
+		&catName,
+		&catSlug,
+		&catDesc,
+		&catCreated,
 		&imagesJSON,
 		&reviewsJSON,
 	)
@@ -392,7 +422,15 @@ func (r *ProductRepositoryImpl) GetBySlug(
 		return dto.ProductDetailResponse{}, fmt.Errorf("unmarshal reviews failed: %w", err)
 	}
 
-	product.Category = cat
+	if catID != nil {
+		product.Category = model.Category{
+			ID:          *catID,
+			Name:        *catName,
+			Slug:        *catSlug,
+			Description: catDesc,
+			CreatedAt:   *catCreated,
+		}
+	}
 
 	return product, nil
 }
@@ -450,11 +488,10 @@ func (r *ProductRepositoryImpl) Update(
 					return nil, ErrConflictSlugName
 				case "products_sku_key":
 					return nil, ErrConflicSku
-				}
-			}
 
-			if pgErr.Code == "23503" {
-				return nil, ErrFkTagsConstraint
+				case "products_category_id_fkey":
+					return nil, ErrFkTagsConstraint
+				}
 			}
 		}
 
@@ -471,6 +508,12 @@ func (r *ProductRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error 
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		res, err := tx.Exec(ctx, query, id)
 		if err != nil {
+			if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
+				if pgErr.Code == "23503" {
+					return ErrProductInUse
+				}
+
+			}
 			return err
 		}
 
@@ -507,7 +550,7 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 				'[]'::json
 			) as images
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		GROUP BY p.id, c.id
 		ORDER BY p.created_at DESC
@@ -524,7 +567,11 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 	for rows.Next() {
 		var (
 			p          model.Product
-			cat        model.Category
+			catID      *uuid.UUID
+			catName    *string
+			catSlug    *string
+			catDesc    *string
+			catCreated *time.Time
 			imagesJSON []byte
 		)
 
@@ -544,11 +591,11 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
-			&cat.ID,
-			&cat.Name,
-			&cat.Slug,
-			&cat.Description,
-			&cat.CreatedAt,
+			&catID,
+			&catName,
+			&catSlug,
+			&catDesc,
+			&catCreated,
 			&imagesJSON,
 		)
 
@@ -561,7 +608,15 @@ func (r *ProductRepositoryImpl) GetAllProducts(
 			return nil, err
 		}
 
-		p.Category = cat
+		if catID != nil {
+			p.Category = &model.Category{
+				ID:          *catID,
+				Name:        *catName,
+				Slug:        *catSlug,
+				Description: catDesc,
+				CreatedAt:   *catCreated,
+			}
+		}
 		products = append(products, p)
 	}
 
@@ -593,7 +648,7 @@ func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 				'[]'::json
 			) as images
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		WHERE c.slug = $1 and p.status = 'active'
 		GROUP BY p.id, c.id
@@ -611,7 +666,11 @@ func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 	for rows.Next() {
 		var (
 			p          model.Product
-			cat        model.Category
+			catID      *uuid.UUID
+			catName    *string
+			catSlug    *string
+			catDesc    *string
+			catCreated *time.Time
 			imagesJSON []byte
 		)
 
@@ -631,11 +690,11 @@ func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
-			&cat.ID,
-			&cat.Name,
-			&cat.Slug,
-			&cat.Description,
-			&cat.CreatedAt,
+			&catID,
+			&catName,
+			&catSlug,
+			&catDesc,
+			&catCreated,
 			&imagesJSON,
 		)
 
@@ -648,7 +707,15 @@ func (r *ProductRepositoryImpl) GetProductsByCategorySlug(
 			return nil, err
 		}
 
-		p.Category = cat
+		if catID != nil {
+			p.Category = &model.Category{
+				ID:          *catID,
+				Name:        *catName,
+				Slug:        *catSlug,
+				Description: catDesc,
+				CreatedAt:   *catCreated,
+			}
+		}
 		products = append(products, p)
 	}
 
@@ -679,7 +746,7 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 				'[]'::json
 			) as images
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		WHERE p.status = $1
 		GROUP BY p.id, c.id
@@ -697,7 +764,11 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 	for rows.Next() {
 		var (
 			p          model.Product
-			cat        model.Category
+			catID      *uuid.UUID
+			catName    *string
+			catSlug    *string
+			catDesc    *string
+			catCreated *time.Time
 			imagesJSON []byte
 		)
 
@@ -717,11 +788,11 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
-			&cat.ID,
-			&cat.Name,
-			&cat.Slug,
-			&cat.Description,
-			&cat.CreatedAt,
+			&catID,
+			&catName,
+			&catSlug,
+			&catDesc,
+			&catCreated,
 			&imagesJSON,
 		)
 
@@ -734,7 +805,15 @@ func (r *ProductRepositoryImpl) GetProductsByStatus(
 			return nil, err
 		}
 
-		p.Category = cat
+		if catID != nil {
+			p.Category = &model.Category{
+				ID:          *catID,
+				Name:        *catName,
+				Slug:        *catSlug,
+				Description: catDesc,
+				CreatedAt:   *catCreated,
+			}
+		}
 		products = append(products, p)
 	}
 
@@ -764,7 +843,7 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 				'[]'::json
 			) as images
 		FROM products p
-		INNER JOIN categories c ON p.category_id = c.id
+		LEFT JOIN categories c ON p.category_id = c.id
 		LEFT JOIN product_images pi ON p.id = pi.product_id
 		WHERE p.is_featured = true
 		GROUP BY p.id, c.id
@@ -782,7 +861,11 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 	for rows.Next() {
 		var (
 			p          model.Product
-			cat        model.Category
+			catID      *uuid.UUID
+			catName    *string
+			catSlug    *string
+			catDesc    *string
+			catCreated *time.Time
 			imagesJSON []byte
 		)
 
@@ -802,11 +885,11 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
-			&cat.ID,
-			&cat.Name,
-			&cat.Slug,
-			&cat.Description,
-			&cat.CreatedAt,
+			&catID,
+			&catName,
+			&catSlug,
+			&catDesc,
+			&catCreated,
 			&imagesJSON,
 		)
 
@@ -819,7 +902,15 @@ func (r *ProductRepositoryImpl) GetFeaturedProducts(
 			return nil, err
 		}
 
-		p.Category = cat
+		if catID != nil {
+			p.Category = &model.Category{
+				ID:          *catID,
+				Name:        *catName,
+				Slug:        *catSlug,
+				Description: catDesc,
+				CreatedAt:   *catCreated,
+			}
+		}
 		products = append(products, p)
 	}
 
@@ -1007,9 +1098,11 @@ func (r *ProductRepositoryImpl) SearchProducts(
                 '[]'::json
             ) as images
         FROM products p
-        INNER JOIN categories c ON p.category_id = c.id
+        LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN product_images pi ON p.id = pi.product_id
-        WHERE to_tsvector('indonesian', p.name) @@ plainto_tsquery('indonesian', $1)
+        WHERE to_tsvector('indonesian', p.name || ' ' || p.slug)
+              @@ plainto_tsquery('indonesian', $1)
+        AND p.status = 'active'
         GROUP BY p.id, c.id
         ORDER BY p.created_at DESC
     `
@@ -1025,7 +1118,11 @@ func (r *ProductRepositoryImpl) SearchProducts(
 	for rows.Next() {
 		var (
 			p          model.Product
-			cat        model.Category
+			catID      *uuid.UUID
+			catName    *string
+			catSlug    *string
+			catDesc    *string
+			catCreated *time.Time
 			imagesJSON []byte
 		)
 
@@ -1045,11 +1142,11 @@ func (r *ProductRepositoryImpl) SearchProducts(
 			&p.IsFeatured,
 			&p.Weight,
 			&p.CreatedAt,
-			&cat.ID,
-			&cat.Name,
-			&cat.Slug,
-			&cat.Description,
-			&cat.CreatedAt,
+			&catID,
+			&catName,
+			&catSlug,
+			&catDesc,
+			&catCreated,
 			&imagesJSON,
 		)
 
@@ -1062,7 +1159,15 @@ func (r *ProductRepositoryImpl) SearchProducts(
 			return nil, err
 		}
 
-		p.Category = cat
+		if catID != nil {
+			p.Category = &model.Category{
+				ID:          *catID,
+				Name:        *catName,
+				Slug:        *catSlug,
+				Description: catDesc,
+				CreatedAt:   *catCreated,
+			}
+		}
 		products = append(products, p)
 	}
 

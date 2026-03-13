@@ -16,7 +16,7 @@ type CreateUserRequest struct {
 
 type UpdateUserRequest struct {
 	ID                   uuid.UUID `validate:"omitempty,uuid" form:"id"`
-	FullName             *string   `validate:"omitempty,min=4,aplhanumspace" form:"full_name"`
+	FullName             *string   `validate:"omitempty,min=4,alphanumspace" form:"full_name"`
 	Email                *string   `validate:"omitempty,email" form:"email"`
 	Password             *string   `validate:"omitempty,min=8" form:"password"`
 	PhoneNumber          *string   `validate:"omitempty,phoneID" form:"phone_number"`

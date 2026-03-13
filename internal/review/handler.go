@@ -176,6 +176,18 @@ func (rh *ReviewHandler) DeleteMyReviewHandler(w http.ResponseWriter, r *http.Re
 
 }
 
+func (rh *ReviewHandler) getAllReviewHandler(w http.ResponseWriter, r *http.Request) {
+
+	data, err := rh.reviewService.GetAllReview(r.Context())
+
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
+}
+
 func (rh *ReviewHandler) SetupRoute(router chi.Router) {
 
 	router.Route("/reviews", func(r chi.Router) {
@@ -197,6 +209,7 @@ func (rh *ReviewHandler) SetupRoute(router chi.Router) {
 			r.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
 
 			r.Delete("/delete/{reviewId}", rh.DeleteHandler)
+			r.Get("/get-all", rh.getAllReviewHandler)
 		})
 
 	})

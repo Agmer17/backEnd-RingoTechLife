@@ -39,7 +39,7 @@ func (r *UserRepositoryImpl) Create(
 ) (*model.User, error) {
 
 	query := `
-		INSERT INTO users 
+		INSERT INTO users
 			(full_name, email, phone_number, password)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at, role
@@ -123,7 +123,7 @@ func (r *UserRepositoryImpl) Update(
 	}
 
 	query := fmt.Sprintf(`
-		UPDATE users 
+		UPDATE users
 		SET %s
 		WHERE id = $%d
 		RETURNING created_at
@@ -135,6 +135,7 @@ func (r *UserRepositoryImpl) Update(
 		return tx.QueryRow(ctx, query, args...).Scan(&user.CreatedAt)
 	})
 
+	fmt.Println(err)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
@@ -237,7 +238,7 @@ func (r *UserRepositoryImpl) IsUserExistsById(
 ) (bool, model.User, error) {
 
 	const query = `
-		SELECT 
+		SELECT
 			id,
 			full_name,
 			email,

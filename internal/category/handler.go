@@ -183,7 +183,7 @@ func (c *CategoryHandler) SetUpRoute(router chi.Router) {
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)
-			r.Use(middleware.RoleMiddleware("ADMIN"))
+			r.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
 
 			r.Post("/add", c.AddNewCategoryHandler)
 			r.Delete("/delete/{id}", c.DeleteCategoryHandler)

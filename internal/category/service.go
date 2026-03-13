@@ -5,6 +5,7 @@ import (
 	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -19,10 +20,10 @@ func NewCategoryService(repo *CategoryRepositoryImpl) *CategoryService {
 	}
 }
 
-func (cs *CategoryService) GetAllCategories(ctx context.Context) ([]model.Category, *common.ErrorResponse) {
+func (cs *CategoryService) GetAllCategories(ctx context.Context) ([]dto.DetailCategoryResponse, *common.ErrorResponse) {
 	data, err := cs.repository.GetAllCategories(ctx)
 	if err != nil {
-		return []model.Category{}, common.NewErrorResponse(500, "internal server error "+err.Error())
+		return []dto.DetailCategoryResponse{}, common.NewErrorResponse(500, "internal server error "+err.Error())
 	}
 	return data, nil
 }
@@ -53,6 +54,7 @@ func (cs *CategoryService) CreateNewCategory(ctx context.Context, data model.Cat
 
 func (cs *CategoryService) UpdateCategories(ctx context.Context, id uuid.UUID, updateData dto.UpdateCategoryRequest) (model.Category, *common.ErrorResponse) {
 
+	fmt.Println("field to update : ", updateData)
 	existData, err := cs.repository.GetByID(ctx, id)
 
 	if err != nil {
@@ -101,6 +103,8 @@ func (cs *CategoryService) UpdateCategories(ctx context.Context, id uuid.UUID, u
 		return model.Category{}, common.NewErrorResponse(500, "gagal mengupdate data di database! "+err.Error())
 
 	}
+
+	fmt.Println("\n\n\n\n\n\n\nSOME UPDATED CAT : ", *updatedData)
 
 	return *updatedData, nil
 }

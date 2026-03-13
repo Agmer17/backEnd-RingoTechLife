@@ -22,11 +22,12 @@ const (
 	ProductStatusInActive    ProductStatus = "inactive"
 	ProductsStatusActive     ProductStatus = "active"
 	ProductsStatusOutOfStock ProductStatus = "out_of_stock"
+	ProductStatusDraft       ProductStatus = "draft"
 )
 
 type Product struct {
 	ID             uuid.UUID        `json:"product_id"`
-	CategoryID     uuid.UUID        `json:"product_category_id"`
+	CategoryID     *uuid.UUID       `json:"product_category_id"`
 	Name           string           `json:"product_name"`
 	Slug           string           `json:"product_slug"`
 	Description    *string          `json:"product_description"`
@@ -40,7 +41,7 @@ type Product struct {
 	IsFeatured     bool             `json:"product_is_featured"`
 	Weight         *int             `json:"product_weight"`
 	Images         []ProductImage   `json:"product_images"`
-	Category       Category         `json:"category"`
+	Category       *Category        `json:"category"`
 	CreatedAt      time.Time        `json:"product_created_at"`
 }
 
