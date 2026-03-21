@@ -46,8 +46,8 @@ func (r *OrderRepositoryImpl) Create(
 	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
 		// 1. Insert order
 		orderQuery := `
-			INSERT INTO orders (user_id, status, subtotal, total_amount, notes)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO orders (user_id, status, subtotal, total_amount, notes, expires_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
 			RETURNING id, created_at, updated_at
 		`
 		err := tx.QueryRow(ctx, orderQuery,
@@ -56,20 +56,20 @@ func (r *OrderRepositoryImpl) Create(
 			order.Subtotal,
 			order.TotalAmount,
 			order.Notes,
+			order.ExpiresAt,
 		).Scan(&order.ID, &order.CreatedAt, &order.UpdatedAt)
 		if err != nil {
 			return fmt.Errorf("failed to insert order: %w", err)
 		}
 
-		// 2. Insert order items + update stock
 		itemQuery := `
-			INSERT INTO order_items 
+			INSERT INTO order_items
 				(order_id, product_id, product_name, product_sku, price_at_purchase, quantity, subtotal)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			RETURNING id, created_at
 		`
 		stockQuery := `
-			UPDATE products 
+			UPDATE products
 			SET stock = stock - $1
 			WHERE id = $2 AND stock >= $1
 			RETURNING stock
@@ -134,7 +134,7 @@ func (r *OrderRepositoryImpl) Create(
 func (r *OrderRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*model.Order, error) {
 	query := `
 		SELECT id, user_id, status, subtotal, total_amount, notes,
-		       created_at, updated_at, confirmed_at, cancelled_at
+		       created_at, updated_at, confirmed_at, cancelled_at, expires_at
 		FROM orders
 		WHERE id = $1
 	`
@@ -150,6 +150,7 @@ func (r *OrderRepositoryImpl) GetByID(ctx context.Context, id uuid.UUID) (*model
 		&order.UpdatedAt,
 		&order.ConfirmedAt,
 		&order.CancelledAt,
+		&order.ExpiresAt,
 	)
 	if err != nil {
 		return nil, err
@@ -174,6 +175,7 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 		o.updated_at,
 		o.confirmed_at,
 		o.cancelled_at,
+		o.expires_at,
 
 		COALESCE(
 			json_agg(
@@ -192,7 +194,7 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 			'[]'
 		) AS items,
 
-		CASE 
+		CASE
     WHEN p.id IS NOT NULL THEN
         jsonb_build_object(
             'id', p.id,
@@ -232,6 +234,7 @@ END AS payment
 		&order.UpdatedAt,
 		&order.ConfirmedAt,
 		&order.CancelledAt,
+		&order.ExpiresAt,
 		&itemsJSON,
 		&paymentJSON,
 	)
@@ -266,7 +269,7 @@ func (r *OrderRepositoryImpl) GetByUserID(
 ) ([]model.Order, error) {
 	query := `
 		SELECT id, user_id, status, subtotal, total_amount, notes,
-		       created_at, updated_at, confirmed_at, cancelled_at
+		       created_at, updated_at, confirmed_at, cancelled_at, expires_at
 		FROM orders
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -291,6 +294,7 @@ func (r *OrderRepositoryImpl) GetByUserID(
 			&order.UpdatedAt,
 			&order.ConfirmedAt,
 			&order.CancelledAt,
+			&order.ExpiresAt,
 		)
 		if err != nil {
 			return nil, err
@@ -318,6 +322,7 @@ func (r *OrderRepositoryImpl) GetByUserIDWithDetails(
 		o.updated_at,
 		o.confirmed_at,
 		o.cancelled_at,
+		o.expires_at,
 
 		COALESCE(
 			json_agg(
@@ -336,7 +341,7 @@ func (r *OrderRepositoryImpl) GetByUserIDWithDetails(
 			'[]'
 		) AS items,
 
-		CASE 
+		CASE
     WHEN p.id IS NOT NULL THEN
         jsonb_build_object(
             'id', p.id,
@@ -386,6 +391,7 @@ END AS payment
 			&order.UpdatedAt,
 			&order.ConfirmedAt,
 			&order.CancelledAt,
+			&order.ExpiresAt,
 			&itemsJSON,
 			&paymentJSON,
 		)
@@ -425,6 +431,7 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 		o.updated_at,
 		o.confirmed_at,
 		o.cancelled_at,
+		o.expires_at,
 
 		COALESCE(
 			json_agg(
@@ -442,7 +449,7 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 			) FILTER (WHERE oi.id IS NOT NULL),
 			'[]'
 		) AS items,
-		CASE 
+		CASE
     WHEN p.id IS NOT NULL THEN
         jsonb_build_object(
             'id', p.id,
@@ -487,6 +494,7 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 			&order.UpdatedAt,
 			&order.ConfirmedAt,
 			&order.CancelledAt,
+			&order.ExpiresAt,
 			&itemsJSON,
 			&paymentJSON,
 		)
@@ -527,6 +535,7 @@ func (r *OrderRepositoryImpl) GetByStatus(
 		o.updated_at,
 		o.confirmed_at,
 		o.cancelled_at,
+		o.expires_at,
 
 		COALESCE(
 			json_agg(
@@ -544,7 +553,7 @@ func (r *OrderRepositoryImpl) GetByStatus(
 			) FILTER (WHERE oi.id IS NOT NULL),
 			'[]'
 		) AS items,
-		CASE 
+		CASE
     WHEN p.id IS NOT NULL THEN
         jsonb_build_object(
             'id', p.id,
@@ -590,6 +599,7 @@ END AS payment
 			&order.UpdatedAt,
 			&order.ConfirmedAt,
 			&order.CancelledAt,
+			&order.ExpiresAt,
 			&itemsJSON,
 			&paymentJSON,
 		)

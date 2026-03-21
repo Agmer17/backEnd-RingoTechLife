@@ -38,7 +38,7 @@ func SetupRouter(r chi.Router, svcCfg *ServiceConfigs) {
 	productHandler := products.NewProductsHandler(svcCfg.ProductService, decoder, validator)
 	reviewHandler := review.NewReviewHandler(svcCfg.ReviewService, validator)
 	orderHandler := order.NewOrderHandler(svcCfg.OrderService, validator)
-	paymentHandler := payment.NewPaymentHandler(svcCfg.PaymentService, decoder)
+	paymentHandler := payment.NewPaymentHandler(svcCfg.PaymentService, decoder, validator)
 
 	fileServer := http.FileServer(http.Dir(svcCfg.ServerStorage.Public))
 

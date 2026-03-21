@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"mime/multipart"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -32,12 +33,10 @@ func NewPaymentService(repo *PaymentRepositoryImpl, storage *storage.FileStorage
 func (ps *PayementService) SubmitProof(ctx context.Context, submitReq dto.SubmitPaymentRequest, currentUser uuid.UUID) (model.Payment, *common.ErrorResponse) {
 
 	orderId, err := uuid.Parse(submitReq.OrderId)
-	// fmt.Println(orderId)
 	if err != nil {
 		return model.Payment{}, common.NewErrorResponse(400, "id payment tidak valid!")
 	}
 
-	//save dulu bg image nya!
 	savedFileNames, svImgErr := ps.processPaymentImages(submitReq.ProofImage)
 	if svImgErr != nil {
 		return model.Payment{}, svImgErr
@@ -59,7 +58,7 @@ func (ps *PayementService) SubmitProof(ctx context.Context, submitReq dto.Submit
 		return model.Payment{}, common.NewErrorResponse(401, "kamu tidak mengakses data ini")
 	}
 
-	if val.OrderStatus != string(model.OrderStatusPending) {
+	if val.OrderStatus != string(model.OrderStatusPending) || time.Now().After(val.ExpiresAt) {
 		ps.fileStorage.DeletePublicFile(savedFileNames, paymentImagePlace)
 		return model.Payment{}, common.NewErrorResponse(400, "waktu pembayaran untuk order ini sudah habis")
 	}
@@ -99,4 +98,23 @@ func (ps *PayementService) processPaymentImages(fileheader *multipart.FileHeader
 
 	return savedFileName, nil
 
+}
+
+func (ps *PayementService) AcceptPayment(ctx context.Context, id uuid.UUID, adminId uuid.UUID, notes *string) *common.ErrorResponse {
+
+	err := ps.paymentRepo.Approve(ctx, id, adminId, notes)
+
+	if err != nil {
+		return common.NewErrorResponse(500, "gagal mengupdate status pembayaran! operasi dibatalkan!")
+	}
+
+	return nil
+}
+
+func (ps *PayementService) RejectPayment(ctx context.Context, id uuid.UUID, adminId uuid.UUID, notes string) *common.ErrorResponse {
+	err := ps.paymentRepo.Reject(ctx, id, adminId, "Pembayaran yang kamu kirim tidak valid!")
+	if err != nil {
+		return common.NewErrorResponse(500, "gagal mengupdate status pembayaran! operasi dibatalkan!")
+	}
+	return nil
 }

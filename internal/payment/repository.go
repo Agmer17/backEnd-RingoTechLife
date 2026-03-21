@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,6 +16,7 @@ type paymentValidationData struct {
 	Amount      float64
 	IssuerId    uuid.UUID
 	OrderStatus string
+	ExpiresAt   time.Time
 }
 
 var ErrNoPaymentfound = errors.New("pembayarab dengan id ini tidak ditemukan!")
@@ -258,7 +260,7 @@ func (p *PaymentRepositoryImpl) GetPendingPayments(ctx context.Context) ([]model
 
 func (p *PaymentRepositoryImpl) ExistByOrderId(ctx context.Context, orderId uuid.UUID) (bool, error) {
 	query := `select exist(
-		select 1 from payments 
+		select 1 from payments
 		where order_id = $1
 	)`
 	var result bool
@@ -274,11 +276,11 @@ func (p *PaymentRepositoryImpl) ExistByOrderId(ctx context.Context, orderId uuid
 func (p *PaymentRepositoryImpl) GetPaymentValidationData(ctx context.Context, orderId uuid.UUID) (paymentValidationData, error) {
 
 	query := `
-	select o.subtotal, o.user_id, o.status from orders o where o.id = $1
+	select o.subtotal, o.user_id, o.status, o.expires_at from orders o where o.id = $1
 	`
 
 	var tempData paymentValidationData
-	err := p.db.QueryRow(ctx, query, orderId).Scan(&tempData.Amount, &tempData.IssuerId, &tempData.OrderStatus)
+	err := p.db.QueryRow(ctx, query, orderId).Scan(&tempData.Amount, &tempData.IssuerId, &tempData.OrderStatus, &tempData.ExpiresAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

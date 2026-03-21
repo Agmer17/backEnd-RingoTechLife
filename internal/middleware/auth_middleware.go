@@ -16,6 +16,7 @@ const (
 	UserIDKey contextKey = "user_id"
 	RoleKey   contextKey = "role"
 	RoleAdmin string     = "ADMIN"
+	RoleUser  string     = "USER"
 )
 
 func AuthMiddleware(next http.Handler) http.Handler {

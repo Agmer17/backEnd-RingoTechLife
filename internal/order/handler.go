@@ -6,6 +6,7 @@ import (
 	"backEnd-RingoTechLife/internal/middleware"
 	"backEnd-RingoTechLife/pkg"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -48,8 +49,12 @@ func (th *OrderHandler) CreateOrderHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	var notes string
+	if order.Notes != nil {
+		notes = *order.Notes
+	}
 	userId, _ := middleware.GetUserID(r.Context())
-	result, insertErr := th.orderService.CreateOneOrder(r.Context(), produtId, order.Quantity, userId)
+	result, insertErr := th.orderService.CreateOneOrder(r.Context(), produtId, order.Quantity, userId, notes)
 
 	if insertErr != nil {
 		pkg.JSONError(w, insertErr.Code, insertErr.Message)
@@ -82,8 +87,11 @@ func (th *OrderHandler) GetOrderById(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userId, _ := middleware.GetUserID(r.Context())
+	role, _ := middleware.GetRole(r.Context())
 
-	data, getErr := th.orderService.GetByOrderId(r.Context(), id, userId)
+	fmt.Println("role di order : ", role)
+
+	data, getErr := th.orderService.GetByOrderId(r.Context(), id, userId, role)
 
 	if getErr != nil {
 		pkg.JSONError(w, getErr.Code, getErr.Message)
@@ -164,7 +172,7 @@ func (th *OrderHandler) SetUpRoute(router chi.Router) {
 			}),
 		))
 		r.Use(middleware.AuthMiddleware)
-
+		r.Use(middleware.RoleMiddleware(middleware.RoleAdmin, middleware.RoleUser))
 		r.Post("/create-order", th.CreateOrderHandler)
 		r.Get("/my-orders", th.GetAllOfMyOrder)
 		r.Get("/id/{id}", th.GetOrderById)

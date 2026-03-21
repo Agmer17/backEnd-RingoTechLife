@@ -3,6 +3,7 @@ package order
 import (
 	"backEnd-RingoTechLife/internal/common"
 	"backEnd-RingoTechLife/internal/common/model"
+	"backEnd-RingoTechLife/internal/middleware"
 	"backEnd-RingoTechLife/internal/products"
 	"context"
 	"errors"
@@ -31,26 +32,35 @@ func NewOrderService(ord *OrderRepositoryImpl, psvc *products.ProductsService, c
 	}
 }
 
-func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, q int, userId uuid.UUID) (*model.Order, *common.ErrorResponse) {
+func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, q int, userId uuid.UUID, notes string) (*model.Order, *common.ErrorResponse) {
 
 	productData, getErr := o.productService.GetById(ctx, productId)
-
 	if getErr != nil {
 		return nil, getErr
 	}
 
+	if q > productData.Stock {
+		return nil, common.NewErrorResponse(409, "Stok tidak valid!")
+	}
+
+	if productData.Status != model.ProductsStatusActive {
+		return nil, common.NewErrorResponse(404, "produk tidak ditemukan! tidak dapat melakukan pembelian")
+	}
+
 	totalPrice := productData.Price * float64(q)
+	expiresAt := time.Now().UTC().Add(2 * time.Hour)
 	order := model.Order{
 		UserID:      userId,
 		Status:      model.OrderStatusPending,
 		Subtotal:    totalPrice,
 		TotalAmount: totalPrice,
-		Notes:       nil,
+		Notes:       &notes,
+		ExpiresAt:   expiresAt,
 	}
 
-	orders := make([]model.OrderItem, 1)
+	orderItems := make([]model.OrderItem, 1)
 
-	orders[0] = model.OrderItem{
+	orderItems[0] = model.OrderItem{
 		ProductID:       productId,
 		ProductName:     productData.Name,
 		ProductSKU:      productData.SKU,
@@ -59,7 +69,7 @@ func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, 
 		Subtotal:        totalPrice,
 	}
 
-	result, err := o.orderRepo.Create(ctx, &order, orders)
+	result, err := o.orderRepo.Create(ctx, &order, orderItems)
 	if err != nil {
 
 		return nil, common.NewErrorResponse(500, "gagal membuat order! "+err.Error())
@@ -67,8 +77,7 @@ func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, 
 
 	o.muTransactionsData.Lock()
 	defer o.muTransactionsData.Unlock()
-	// buat timer untuk cancel ordernya!
-	orderDeadline := time.AfterFunc(1*time.Minute, func() {
+	orderDeadline := time.AfterFunc(time.Until(expiresAt), func() {
 		o.muTransactionsData.Lock()
 		defer o.muTransactionsData.Unlock()
 
@@ -103,7 +112,7 @@ func (o *OrderService) GetAllOrderByUserId(ctx context.Context, userId uuid.UUID
 	return data, nil
 }
 
-func (o *OrderService) GetByOrderId(ctx context.Context, orderId uuid.UUID, userID uuid.UUID) (model.Order, *common.ErrorResponse) {
+func (o *OrderService) GetByOrderId(ctx context.Context, orderId uuid.UUID, userID uuid.UUID, role string) (model.Order, *common.ErrorResponse) {
 
 	data, err := o.orderRepo.GetByIDWithDetails(ctx, orderId)
 
@@ -114,8 +123,8 @@ func (o *OrderService) GetByOrderId(ctx context.Context, orderId uuid.UUID, user
 		return model.Order{}, common.NewErrorResponse(500, "gagal mengambil data di database "+err.Error())
 	}
 
-	if data.UserID != userID {
-		return model.Order{}, common.NewErrorResponse(401, "kamu tidak bisa mengakses data ini!")
+	if role != middleware.RoleAdmin && data.UserID != userID {
+		return model.Order{}, common.NewErrorResponse(404, "Transaksi tidak ditemukan!")
 	}
 
 	return *data, nil

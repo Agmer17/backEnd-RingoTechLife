@@ -13,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
 	"github.com/go-playground/form/v4"
+	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
 
 const maxFormSize = 5 << 20
@@ -20,12 +22,14 @@ const maxFormSize = 5 << 20
 type PaymentHandler struct {
 	payementService *PayementService
 	decoder         *form.Decoder
+	Validator       *validator.Validate
 }
 
-func NewPaymentHandler(pay *PayementService, dec *form.Decoder) *PaymentHandler {
+func NewPaymentHandler(pay *PayementService, dec *form.Decoder, vld *validator.Validate) *PaymentHandler {
 	return &PaymentHandler{
 		payementService: pay,
 		decoder:         dec,
+		Validator:       vld,
 	}
 }
 
@@ -65,6 +69,69 @@ func (p *PaymentHandler) SubmitPaymentHandler(w http.ResponseWriter, r *http.Req
 
 }
 
+func (p *PaymentHandler) AcceptPaymentHandler(w http.ResponseWriter, r *http.Request) {
+
+	var req dto.UpdatePaymentStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		pkg.JSONError(w, 400, "Harap isi data dengan benar!")
+		return
+	}
+
+	if err := p.Validator.Struct(req); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	adminId, _ := middleware.GetUserID(r.Context())
+
+	paymentUuid, err := uuid.Parse(req.PaymentId)
+	if err != nil {
+		pkg.JSONError(w, 401, "Kamu tidak bisa mengakses ini!")
+		return
+	}
+
+	uptErr := p.payementService.AcceptPayment(r.Context(), paymentUuid, adminId, req.Note)
+	if uptErr != nil {
+		pkg.JSONError(w, uptErr.Code, uptErr.Message)
+		return
+	}
+	pkg.JSONSuccess(w, 200, "Berhasil mengupdate status pembayaran!", nil)
+
+}
+
+func (p *PaymentHandler) RejectPaymentHandler(w http.ResponseWriter, r *http.Request) {
+	var req dto.UpdatePaymentStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		pkg.JSONError(w, 400, "Harap isi data dengan benar!")
+		return
+	}
+
+	if err := p.Validator.Struct(req); err != nil {
+		validationErr := pkg.ValidationErrorsToMap(err)
+
+		pkg.JSONError(w, 400, validationErr)
+		return
+	}
+
+	adminId, _ := middleware.GetUserID(r.Context())
+
+	paymentUuid, err := uuid.Parse(req.PaymentId)
+	if err != nil {
+		pkg.JSONError(w, 401, "Kamu tidak bisa mengakses ini!")
+		return
+	}
+
+	uptErr := p.payementService.RejectPayment(r.Context(), paymentUuid, adminId, "gagal melakukan pembayaran")
+	if uptErr != nil {
+		pkg.JSONError(w, uptErr.Code, uptErr.Message)
+		return
+	}
+	pkg.JSONSuccess(w, 200, "Berhasil mengupdate status pembayaran!", nil)
+
+}
+
 func (p *PaymentHandler) SetupRoute(router chi.Router) {
 
 	router.Route("/payments", func(r chi.Router) {
@@ -82,6 +149,11 @@ func (p *PaymentHandler) SetupRoute(router chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 
 		r.Post("/order", p.SubmitPaymentHandler)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RoleMiddleware(middleware.RoleAdmin))
+			r.Post("/accept", p.AcceptPaymentHandler)
+			r.Post("/reject", p.RejectPaymentHandler)
+		})
 	})
 
 }

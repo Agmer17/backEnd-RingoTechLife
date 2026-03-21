@@ -36,8 +36,8 @@ type Order struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 	ConfirmedAt *time.Time `json:"confirmed_at,omitempty"`
 	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
+	ExpiresAt   time.Time  `json:"expires_at"`
 
-	// Relasi — diisi manual saat perlu (bukan auto load)
 	Items   []OrderItem `json:"items,omitempty"`
 	Payment *Payment    `json:"payment,omitempty"`
 }
