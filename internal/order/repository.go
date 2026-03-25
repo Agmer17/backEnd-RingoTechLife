@@ -26,6 +26,7 @@ type OrderRepositoryInterface interface {
 	GetByStatus(ctx context.Context, status model.OrderStatus) ([]model.Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.OrderStatus) error
 	Cancel(ctx context.Context, id uuid.UUID) error
+	CreateWithoutItems(ctx context.Context, order *model.Order) (*model.Order, error)
 }
 
 type OrderRepositoryImpl struct {
@@ -121,6 +122,58 @@ func (r *OrderRepositoryImpl) Create(
 		}
 
 		order.Items = items
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return order, nil
+}
+
+func (r *OrderRepositoryImpl) CreateWithoutItems(
+	ctx context.Context,
+	order *model.Order,
+) (*model.Order, error) {
+	err := pgx.BeginFunc(ctx, r.db, func(tx pgx.Tx) error {
+		// 1. Insert order
+		orderQuery := `
+			INSERT INTO orders (user_id, status, subtotal, total_amount, notes, expires_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING id, created_at, updated_at
+		`
+		err := tx.QueryRow(ctx, orderQuery,
+			order.UserID,
+			order.Status,
+			order.Subtotal,
+			order.TotalAmount,
+			order.Notes,
+			order.ExpiresAt,
+		).Scan(&order.ID, &order.CreatedAt, &order.UpdatedAt)
+		if err != nil {
+			return fmt.Errorf("failed to insert order: %w", err)
+		}
+
+		// 2. Insert payment
+		paymentQuery := `
+			INSERT INTO payments (order_id, status, amount)
+			VALUES ($1, $2, $3)
+			RETURNING id, created_at, updated_at
+		`
+
+		var paymentID uuid.UUID
+		var paymentCreatedAt, paymentUpdatedAt interface{}
+
+		err = tx.QueryRow(ctx, paymentQuery,
+			order.ID,
+			model.PaymentStatusUnpaid,
+			order.TotalAmount,
+		).Scan(&paymentID, &paymentCreatedAt, &paymentUpdatedAt)
+		if err != nil {
+			return fmt.Errorf("failed to insert payment: %w", err)
+		}
+
 		return nil
 	})
 

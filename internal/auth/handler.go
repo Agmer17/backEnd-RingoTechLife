@@ -117,7 +117,7 @@ func (h *AuthHandler) SetUpRoute(router chi.Router) {
 
 	router.Route("/auth", func(r chi.Router) {
 		r.Use(httprate.Limit(
-			20,
+			30,
 			time.Minute,
 			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")

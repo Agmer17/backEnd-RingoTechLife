@@ -245,8 +245,14 @@ func (ph *ProductsHandler) GetProductByStatus(w http.ResponseWriter, r *http.Req
 
 func (ph *ProductsHandler) GetSearchProducts(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("q")
+	categorySlug := r.URL.Query().Get("c")
 
-	data, searchErr := ph.service.SearchProductQuery(r.Context(), search)
+	var catKey *string
+	if categorySlug != "" {
+		catKey = &categorySlug
+	}
+
+	data, searchErr := ph.service.SearchProductQuery(r.Context(), search, catKey)
 
 	if searchErr != nil {
 		pkg.JSONError(w, searchErr.Code, searchErr.Message)
@@ -255,6 +261,17 @@ func (ph *ProductsHandler) GetSearchProducts(w http.ResponseWriter, r *http.Requ
 
 	pkg.JSONSuccess(w, 200, "berhasil mengambil data", data)
 
+}
+
+func (ph *ProductsHandler) GetHomePageData(w http.ResponseWriter, r *http.Request) {
+
+	data, err := ph.service.GetHomeData(r.Context())
+	if err != nil {
+		pkg.JSONError(w, err.Code, err.Message)
+		return
+	}
+
+	pkg.JSONSuccess(w, 200, "Berhasil mengambil data", data)
 }
 
 func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
@@ -268,6 +285,7 @@ func (ph *ProductsHandler) SetUpRoute(r chi.Router) {
 		r.Get("/category/{cat}", ph.GetByCategory)
 		r.Get("/get", ph.GetProductByStatus)
 		r.Get("/search", ph.GetSearchProducts)
+		r.Get("/home-data", ph.GetHomePageData)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.AuthMiddleware)

@@ -20,6 +20,15 @@ type ProductsService struct {
 	productImageService *productimage.ProductImageService
 }
 
+type CategoryProductGroup struct {
+	model.Category
+	Products []model.Product `json:"products"`
+}
+type HomePageResponseData struct {
+	BestSellers []model.Product        `json:"best_seller"`
+	ProductData []CategoryProductGroup `json:"product_data"`
+}
+
 func NewProductsService(rp *ProductRepositoryImpl, fs *storage.FileStorage, img *productimage.ProductImageService) *ProductsService {
 	return &ProductsService{
 		repo:                rp,
@@ -262,9 +271,9 @@ func (p *ProductsService) GetProductByStatus(ctx context.Context, status string)
 
 }
 
-func (p *ProductsService) SearchProductQuery(ctx context.Context, query string) ([]model.Product, *common.ErrorResponse) {
+func (p *ProductsService) SearchProductQuery(ctx context.Context, query string, cat *string) ([]model.Product, *common.ErrorResponse) {
 
-	data, err := p.repo.SearchProducts(ctx, query)
+	data, err := p.repo.SearchProducts(ctx, query, cat)
 	if err != nil {
 		return []model.Product{}, common.NewErrorResponse(500, "Terjadi kesalahan di server! "+err.Error())
 	}
@@ -373,4 +382,52 @@ func mergeUpdatedImages(
 	}
 
 	return oldImages
+}
+
+func (p *ProductsService) GetHomeData(ctx context.Context) (HomePageResponseData, *common.ErrorResponse) {
+
+	var responseData HomePageResponseData = HomePageResponseData{}
+
+	bestSeller, err := p.repo.GetBestSellerProducts(ctx)
+	if err != nil {
+		fmt.Println("best seller : ", err)
+		return HomePageResponseData{}, common.NewErrorResponse(500, "terjadi kesalahan di server")
+	}
+	responseData.BestSellers = bestSeller
+
+	groupProduct, err := p.repo.GetProductsGroupedByCategory(ctx)
+	if err != nil {
+		fmt.Println("group : ", err)
+		return HomePageResponseData{}, common.NewErrorResponse(500, "terjadi kesalahan di server")
+	}
+
+	groupMap := make(map[string]*CategoryProductGroup)
+
+	for _, p := range groupProduct {
+		key := "no-category"
+
+		if p.Category != nil {
+			key = p.Category.ID.String()
+			if _, ok := groupMap[key]; !ok {
+				groupMap[key] = &CategoryProductGroup{
+					Category: *p.Category,
+				}
+			}
+		} else {
+			if _, ok := groupMap[key]; !ok {
+				groupMap[key] = &CategoryProductGroup{}
+			}
+		}
+
+		groupMap[key].Products = append(groupMap[key].Products, p)
+	}
+
+	var result []CategoryProductGroup
+
+	for _, v := range groupMap {
+		result = append(result, *v)
+	}
+
+	responseData.ProductData = result
+	return responseData, nil
 }

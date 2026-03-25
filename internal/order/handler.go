@@ -106,6 +106,7 @@ func (th *OrderHandler) GetAllOrderHandler(w http.ResponseWriter, r *http.Reques
 	data, err := th.orderService.GetAllOrders(r.Context())
 
 	if err != nil {
+		fmt.Println(err)
 		pkg.JSONError(w, err.Code, err.Message)
 		return
 	}

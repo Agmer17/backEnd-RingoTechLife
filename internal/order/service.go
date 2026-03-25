@@ -48,7 +48,7 @@ func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, 
 	}
 
 	totalPrice := productData.Price * float64(q)
-	expiresAt := time.Now().UTC().Add(2 * time.Hour)
+	expiresAt := time.Now().UTC().Add(12 * time.Hour)
 	order := model.Order{
 		UserID:      userId,
 		Status:      model.OrderStatusPending,
@@ -103,10 +103,30 @@ func (o *OrderService) CreateOneOrder(ctx context.Context, productId uuid.UUID, 
 	return result, nil
 }
 
+func (o *OrderService) CreateOrderWithoutProduct(ctx context.Context, userId uuid.UUID, notes string, subtotal float64, expiresAt time.Time) (model.Order, *common.ErrorResponse) {
+
+	order := model.Order{
+		UserID:      userId,
+		Status:      model.OrderStatusPending,
+		Subtotal:    subtotal,
+		TotalAmount: subtotal,
+		Notes:       &notes,
+		ExpiresAt:   expiresAt,
+	}
+
+	insertData, err := o.orderRepo.CreateWithoutItems(ctx, &order)
+	if err != nil {
+		return model.Order{}, common.NewErrorResponse(500, "gagal melakukan operasi di database")
+	}
+
+	return *insertData, nil
+}
+
 func (o *OrderService) GetAllOrderByUserId(ctx context.Context, userId uuid.UUID) ([]model.Order, *common.ErrorResponse) {
 
 	data, err := o.orderRepo.GetByUserIDWithDetails(ctx, userId)
 	if err != nil {
+		fmt.Println(err)
 		return []model.Order{}, common.NewErrorResponse(500, "gagal mengambil data di database!"+err.Error())
 	}
 	return data, nil
