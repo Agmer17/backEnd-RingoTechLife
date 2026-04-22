@@ -4,6 +4,7 @@ import (
 	"backEnd-RingoTechLife/internal/common/dto"
 	"backEnd-RingoTechLife/internal/common/model"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -40,13 +41,22 @@ func NewServiceRequestRepository(pool *pgxpool.Pool) *ServiceRequestRepository {
 
 func (r *ServiceRequestRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.ServiceRequest, error) {
 	query := `
-		SELECT id, user_id, device_type, device_brand, device_model,
-		       problem_description, photo_1, photo_2, photo_3, status,
-		       quoted_price, estimated_duration, admin_note, quoted_by,
-		       order_id, created_at, updated_at, quoted_at, decided_at
-		FROM service_requests
-		WHERE id = $1`
-
+        SELECT sr.id, sr.user_id, sr.device_type, sr.device_brand, sr.device_model,
+               sr.problem_description, sr.photo_1, sr.photo_2, sr.photo_3, sr.status,
+               sr.quoted_price, sr.estimated_duration, sr.admin_note, sr.quoted_by,
+               sr.order_id, sr.created_at, sr.updated_at, sr.quoted_at, sr.decided_at,
+               jsonb_build_object(
+                   'id', u.id,
+                   'full_name', u.full_name,
+                   'email', u.email,
+                   'phone_number', u.phone_number,
+                   'role', u.role,
+                   'profile_picture', u.profile_picture,
+                   'created_at', u.created_at AT TIME ZONE 'UTC'
+               ) AS user_data
+        FROM service_requests sr
+        INNER JOIN users u ON u.id = sr.user_id
+        WHERE sr.id = $1`
 	row := r.pool.QueryRow(ctx, query, id)
 	sr, err := scanServiceRequest(row)
 	if err != nil {
@@ -60,38 +70,54 @@ func (r *ServiceRequestRepository) GetByID(ctx context.Context, id uuid.UUID) (*
 
 func (r *ServiceRequestRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]*model.ServiceRequest, error) {
 	query := `
-		SELECT id, user_id, device_type, device_brand, device_model,
-		       problem_description, photo_1, photo_2, photo_3, status,
-		       quoted_price, estimated_duration, admin_note, quoted_by,
-		       order_id, created_at, updated_at, quoted_at, decided_at
-		FROM service_requests
-		WHERE user_id = $1
-		ORDER BY created_at DESC`
-
+        SELECT sr.id, sr.user_id, sr.device_type, sr.device_brand, sr.device_model,
+               sr.problem_description, sr.photo_1, sr.photo_2, sr.photo_3, sr.status,
+               sr.quoted_price, sr.estimated_duration, sr.admin_note, sr.quoted_by,
+               sr.order_id, sr.created_at, sr.updated_at, sr.quoted_at, sr.decided_at,
+               jsonb_build_object(
+                   'id', u.id,
+                   'full_name', u.full_name,
+                   'email', u.email,
+                   'phone_number', u.phone_number,
+                   'role', u.role,
+                   'profile_picture', u.profile_picture,
+                   'created_at', u.created_at AT TIME ZONE 'UTC'
+               ) AS user_data
+        FROM service_requests sr
+        INNER JOIN users u ON u.id = sr.user_id
+        WHERE sr.user_id = $1
+        ORDER BY sr.created_at DESC`
 	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("GetByUserID: %w", err)
 	}
 	defer rows.Close()
-
 	return collectServiceRequests(rows)
 }
 
 func (r *ServiceRequestRepository) GetAll(ctx context.Context) ([]*model.ServiceRequest, error) {
 	query := `
-		SELECT id, user_id, device_type, device_brand, device_model,
-		       problem_description, photo_1, photo_2, photo_3, status,
-		       quoted_price, estimated_duration, admin_note, quoted_by,
-		       order_id, created_at, updated_at, quoted_at, decided_at
-		FROM service_requests
-		ORDER BY created_at DESC`
-
+        SELECT sr.id, sr.user_id, sr.device_type, sr.device_brand, sr.device_model,
+               sr.problem_description, sr.photo_1, sr.photo_2, sr.photo_3, sr.status,
+               sr.quoted_price, sr.estimated_duration, sr.admin_note, sr.quoted_by,
+               sr.order_id, sr.created_at, sr.updated_at, sr.quoted_at, sr.decided_at,
+               jsonb_build_object(
+                   'id', u.id,
+                   'full_name', u.full_name,
+                   'email', u.email,
+                   'phone_number', u.phone_number,
+                   'role', u.role,
+                   'profile_picture', u.profile_picture,
+                   'created_at', u.created_at AT TIME ZONE 'UTC'
+               ) AS user_data
+        FROM service_requests sr
+        INNER JOIN users u ON u.id = sr.user_id
+        ORDER BY sr.created_at DESC`
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("GetAll: %w", err)
 	}
 	defer rows.Close()
-
 	return collectServiceRequests(rows)
 }
 
@@ -239,14 +265,19 @@ type scannable interface {
 
 func scanServiceRequest(row scannable) (*model.ServiceRequest, error) {
 	var sr model.ServiceRequest
+	var userJSON []byte
 	err := row.Scan(
 		&sr.ID, &sr.UserID, &sr.DeviceType, &sr.DeviceBrand, &sr.DeviceModel,
 		&sr.ProblemDescription, &sr.Photo1, &sr.Photo2, &sr.Photo3, &sr.Status,
 		&sr.QuotedPrice, &sr.EstimatedDuration, &sr.AdminNote, &sr.QuotedBy,
 		&sr.OrderID, &sr.CreatedAt, &sr.UpdatedAt, &sr.QuotedAt, &sr.DecidedAt,
+		&userJSON,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal(userJSON, &sr.User); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
 	}
 	return &sr, nil
 }

@@ -123,7 +123,7 @@ func (p *PaymentHandler) RejectPaymentHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	uptErr := p.payementService.RejectPayment(r.Context(), paymentUuid, adminId, "gagal melakukan pembayaran")
+	uptErr := p.payementService.RejectPayment(r.Context(), paymentUuid, adminId, *req.Note)
 	if uptErr != nil {
 		pkg.JSONError(w, uptErr.Code, uptErr.Message)
 		return

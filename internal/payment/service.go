@@ -112,7 +112,7 @@ func (ps *PayementService) AcceptPayment(ctx context.Context, id uuid.UUID, admi
 }
 
 func (ps *PayementService) RejectPayment(ctx context.Context, id uuid.UUID, adminId uuid.UUID, notes string) *common.ErrorResponse {
-	err := ps.paymentRepo.Reject(ctx, id, adminId, "Pembayaran yang kamu kirim tidak valid!")
+	err := ps.paymentRepo.Reject(ctx, id, adminId, notes)
 	if err != nil {
 		return common.NewErrorResponse(500, "gagal mengupdate status pembayaran! operasi dibatalkan!")
 	}

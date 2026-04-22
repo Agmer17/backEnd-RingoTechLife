@@ -81,8 +81,8 @@ func (a *AuthService) Login(ctx context.Context, req LoginRequest, w http.Respon
 		Value:    refreshToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   SevenDays,
 	})
 

@@ -37,4 +37,5 @@ type ServiceRequest struct {
 	UpdatedAt          time.Time            `json:"updated_at"`
 	QuotedAt           *time.Time           `json:"quoted_at"`
 	DecidedAt          *time.Time           `json:"decided_at"`
+	User               User                 `json:"user"`
 }

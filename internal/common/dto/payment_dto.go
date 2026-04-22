@@ -9,5 +9,5 @@ type SubmitPaymentRequest struct {
 
 type UpdatePaymentStatusRequest struct {
 	PaymentId string  `json:"payment_id" validate:"required,uuid"`
-	Note      *string `json:"notes" validate:"omitempty,alphanumspace"`
+	Note      *string `json:"notes"`
 }

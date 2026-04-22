@@ -194,7 +194,7 @@ func (sr *ServiceRequestHandler) UserDecisionHandler(w http.ResponseWriter, r *h
 	}
 
 	if req.Accept {
-		if aerr := sr.service.AcceptServiceByUser(r.Context(), serviceId, userId); aerr != nil {
+		if aerr := sr.service.AcceptServiceByUser(r.Context(), serviceId, userId, ""); aerr != nil {
 			pkg.JSONError(w, aerr.Code, aerr.Message)
 			return
 		}

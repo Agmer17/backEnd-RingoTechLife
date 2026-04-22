@@ -38,6 +38,7 @@ type Order struct {
 	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
 	ExpiresAt   time.Time  `json:"expires_at"`
 
-	Items   []OrderItem `json:"items,omitempty"`
-	Payment *Payment    `json:"payment,omitempty"`
+	Items    []OrderItem `json:"items,omitempty"`
+	Payment  *Payment    `json:"payment,omitempty"`
+	UserData User        `json:"user"`
 }

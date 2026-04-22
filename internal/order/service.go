@@ -135,7 +135,6 @@ func (o *OrderService) GetAllOrderByUserId(ctx context.Context, userId uuid.UUID
 func (o *OrderService) GetByOrderId(ctx context.Context, orderId uuid.UUID, userID uuid.UUID, role string) (model.Order, *common.ErrorResponse) {
 
 	data, err := o.orderRepo.GetByIDWithDetails(ctx, orderId)
-
 	if err != nil {
 		if errors.Is(err, ErrNoOrderFound) {
 			return model.Order{}, common.NewErrorResponse(404, "order tidak ditemukan!")

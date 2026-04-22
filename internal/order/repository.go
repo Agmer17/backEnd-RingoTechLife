@@ -215,66 +215,73 @@ func (r *OrderRepositoryImpl) GetByIDWithDetails(
 	ctx context.Context,
 	id uuid.UUID,
 ) (*model.Order, error) {
-
 	query := `
-	SELECT
-		o.id,
-		o.user_id,
-		o.status,
-		o.subtotal,
-		o.total_amount,
-		o.notes,
-		o.created_at,
-		o.updated_at,
-		o.confirmed_at,
-		o.cancelled_at,
-		o.expires_at,
-
-		COALESCE(
-			json_agg(
-				jsonb_build_object(
-					'id', oi.id,
-					'order_id', oi.order_id,
-					'product_id', oi.product_id,
-					'product_name', oi.product_name,
-					'product_sku', oi.product_sku,
-					'price_at_purchase', oi.price_at_purchase,
-					'quantity', oi.quantity,
-					'subtotal', oi.subtotal,
-					'created_at', oi.created_at AT TIME ZONE 'UTC'
-				)
-			) FILTER (WHERE oi.id IS NOT NULL),
-			'[]'
-		) AS items,
-
-		CASE
-    WHEN p.id IS NOT NULL THEN
+    SELECT
+        o.id,
+        o.user_id,
+        o.status,
+        o.subtotal,
+        o.total_amount,
+        o.notes,
+        o.created_at,
+        o.updated_at,
+        o.confirmed_at,
+        o.cancelled_at,
+        o.expires_at,
+        COALESCE(
+            json_agg(
+                jsonb_build_object(
+                    'id', oi.id,
+                    'order_id', oi.order_id,
+                    'product_id', oi.product_id,
+                    'product_name', oi.product_name,
+                    'product_sku', oi.product_sku,
+                    'price_at_purchase', oi.price_at_purchase,
+                    'quantity', oi.quantity,
+                    'subtotal', oi.subtotal,
+                    'created_at', oi.created_at AT TIME ZONE 'UTC'
+                )
+            ) FILTER (WHERE oi.id IS NOT NULL),
+            '[]'
+        ) AS items,
+        CASE
+            WHEN p.id IS NOT NULL THEN
+                jsonb_build_object(
+                    'id', p.id,
+                    'order_id', p.order_id,
+                    'status', p.status,
+                    'amount', p.amount::float,
+                    'proof_image', p.proof_image,
+                    'admin_note', p.admin_note,
+                    'verified_by', p.verified_by,
+                    'created_at', p.created_at AT TIME ZONE 'UTC',
+                    'updated_at', p.updated_at AT TIME ZONE 'UTC',
+                    'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+                    'verified_at', p.verified_at AT TIME ZONE 'UTC'
+                )
+            ELSE NULL
+        END AS payment,
         jsonb_build_object(
-            'id', p.id,
-            'order_id', p.order_id,
-            'status', p.status,
-            'amount', p.amount::float,
-            'proof_image', p.proof_image,
-            'admin_note', p.admin_note,
-            'verified_by', p.verified_by,
-            'created_at', p.created_at AT TIME ZONE 'UTC',
-            'updated_at', p.updated_at AT TIME ZONE 'UTC',
-            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
-            'verified_at', p.verified_at AT TIME ZONE 'UTC'
-        )
-    ELSE NULL
-END AS payment
-
-	FROM orders o
-	LEFT JOIN order_items oi ON oi.order_id = o.id
-	LEFT JOIN payments p ON p.order_id = o.id
-	WHERE o.id = $1
-	GROUP BY o.id, p.id
-	`
+            'id', u.id,
+            'full_name', u.full_name,
+            'email', u.email,
+            'phone_number', u.phone_number,
+            'role', u.role,
+            'profile_picture', u.profile_picture,
+            'created_at', u.created_at AT TIME ZONE 'UTC'
+        ) AS user_data
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN payments p ON p.order_id = o.id
+    INNER JOIN users u ON u.id = o.user_id
+    WHERE o.id = $1
+    GROUP BY o.id, p.id, u.id
+    `
 
 	var order model.Order
 	var itemsJSON []byte
 	var paymentJSON []byte
+	var userJSON []byte
 
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&order.ID,
@@ -290,8 +297,8 @@ END AS payment
 		&order.ExpiresAt,
 		&itemsJSON,
 		&paymentJSON,
+		&userJSON,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return &model.Order{}, ErrNoOrderFound
@@ -307,10 +314,14 @@ END AS payment
 	// Unmarshal payment (optional)
 	if paymentJSON != nil {
 		var payment model.Payment
-		fmt.Println(string(paymentJSON))
 		if err := json.Unmarshal(paymentJSON, &payment); err == nil {
 			order.Payment = &payment
 		}
+	}
+
+	// Unmarshal user
+	if err := json.Unmarshal(userJSON, &order.UserData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
 	}
 
 	return &order, nil
@@ -362,63 +373,69 @@ func (r *OrderRepositoryImpl) GetByUserIDWithDetails(
 	ctx context.Context,
 	userID uuid.UUID,
 ) ([]model.Order, error) {
-
 	query := `
-	SELECT
-		o.id,
-		o.user_id,
-		o.status,
-		o.subtotal,
-		o.total_amount,
-		o.notes,
-		o.created_at,
-		o.updated_at,
-		o.confirmed_at,
-		o.cancelled_at,
-		o.expires_at,
-
-		COALESCE(
-			json_agg(
-				jsonb_build_object(
-					'id', oi.id,
-					'order_id', oi.order_id,
-					'product_id', oi.product_id,
-					'product_name', oi.product_name,
-					'product_sku', oi.product_sku,
-					'price_at_purchase', oi.price_at_purchase,
-					'quantity', oi.quantity,
-					'subtotal', oi.subtotal,
-					'created_at', oi.created_at AT TIME ZONE 'UTC'
-				)
-			) FILTER (WHERE oi.id IS NOT NULL),
-			'[]'
-		) AS items,
-
-		CASE
-    WHEN p.id IS NOT NULL THEN
+    SELECT
+        o.id,
+        o.user_id,
+        o.status,
+        o.subtotal,
+        o.total_amount,
+        o.notes,
+        o.created_at,
+        o.updated_at,
+        o.confirmed_at,
+        o.cancelled_at,
+        o.expires_at,
+        COALESCE(
+            json_agg(
+                jsonb_build_object(
+                    'id', oi.id,
+                    'order_id', oi.order_id,
+                    'product_id', oi.product_id,
+                    'product_name', oi.product_name,
+                    'product_sku', oi.product_sku,
+                    'price_at_purchase', oi.price_at_purchase,
+                    'quantity', oi.quantity,
+                    'subtotal', oi.subtotal,
+                    'created_at', oi.created_at AT TIME ZONE 'UTC'
+                )
+            ) FILTER (WHERE oi.id IS NOT NULL),
+            '[]'
+        ) AS items,
+        CASE
+            WHEN p.id IS NOT NULL THEN
+                jsonb_build_object(
+                    'id', p.id,
+                    'order_id', p.order_id,
+                    'status', p.status,
+                    'amount', p.amount::float,
+                    'proof_image', p.proof_image,
+                    'admin_note', p.admin_note,
+                    'verified_by', p.verified_by,
+                    'created_at', p.created_at AT TIME ZONE 'UTC',
+                    'updated_at', p.updated_at AT TIME ZONE 'UTC',
+                    'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+                    'verified_at', p.verified_at AT TIME ZONE 'UTC'
+                )
+            ELSE NULL
+        END AS payment,
         jsonb_build_object(
-            'id', p.id,
-            'order_id', p.order_id,
-            'status', p.status,
-            'amount', p.amount::float,
-            'proof_image', p.proof_image,
-            'admin_note', p.admin_note,
-            'verified_by', p.verified_by,
-            'created_at', p.created_at AT TIME ZONE 'UTC',
-            'updated_at', p.updated_at AT TIME ZONE 'UTC',
-            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
-            'verified_at', p.verified_at AT TIME ZONE 'UTC'
-        )
-    ELSE NULL
-END AS payment
-
-	FROM orders o
-	LEFT JOIN order_items oi ON oi.order_id = o.id
-	LEFT JOIN payments p ON p.order_id = o.id
-	WHERE o.user_id = $1
-	GROUP BY o.id, p.id
-	ORDER BY o.created_at DESC
-	`
+            'id', u.id,
+            'full_name', u.full_name,
+            'email', u.email,
+            'phone_number', u.phone_number,
+            'role', u.role,
+            'profile_picture', u.profile_picture,
+            'created_at', u.created_at AT TIME ZONE 'UTC'
+        ) AS user_data
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN payments p ON p.order_id = o.id
+    INNER JOIN users u ON u.id = o.user_id
+    WHERE o.user_id = $1
+    GROUP BY o.id, p.id, u.id
+    ORDER BY o.created_at DESC
+    `
 
 	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
@@ -427,11 +444,11 @@ END AS payment
 	defer rows.Close()
 
 	var orders []model.Order
-
 	for rows.Next() {
 		var order model.Order
 		var itemsJSON []byte
 		var paymentJSON []byte
+		var userJSON []byte
 
 		err := rows.Scan(
 			&order.ID,
@@ -447,6 +464,7 @@ END AS payment
 			&order.ExpiresAt,
 			&itemsJSON,
 			&paymentJSON,
+			&userJSON,
 		)
 		if err != nil {
 			return nil, err
@@ -465,7 +483,16 @@ END AS payment
 			}
 		}
 
+		// Unmarshal user
+		if err := json.Unmarshal(userJSON, &order.UserData); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+		}
+
 		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return orders, nil
@@ -485,7 +512,6 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 		o.confirmed_at,
 		o.cancelled_at,
 		o.expires_at,
-
 		COALESCE(
 			json_agg(
 				jsonb_build_object(
@@ -503,26 +529,36 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 			'[]'
 		) AS items,
 		CASE
-    WHEN p.id IS NOT NULL THEN
-        jsonb_build_object(
-            'id', p.id,
-            'order_id', p.order_id,
-            'status', p.status,
-            'amount', p.amount::float,
-            'proof_image', p.proof_image,
-            'admin_note', p.admin_note,
-            'verified_by', p.verified_by,
-            'created_at', p.created_at AT TIME ZONE 'UTC',
-            'updated_at', p.updated_at AT TIME ZONE 'UTC',
-            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
-            'verified_at', p.verified_at AT TIME ZONE 'UTC'
-        )
-    ELSE NULL
-	END AS payment
+			WHEN p.id IS NOT NULL THEN
+				jsonb_build_object(
+					'id', p.id,
+					'order_id', p.order_id,
+					'status', p.status,
+					'amount', p.amount::float,
+					'proof_image', p.proof_image,
+					'admin_note', p.admin_note,
+					'verified_by', p.verified_by,
+					'created_at', p.created_at AT TIME ZONE 'UTC',
+					'updated_at', p.updated_at AT TIME ZONE 'UTC',
+					'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+					'verified_at', p.verified_at AT TIME ZONE 'UTC'
+				)
+			ELSE NULL
+		END AS payment,
+		jsonb_build_object(
+			'id', u.id,
+			'full_name', u.full_name,
+			'email', u.email,
+			'phone_number', u.phone_number,
+			'role', u.role,
+			'profile_picture', u.profile_picture,
+			'created_at', u.created_at AT TIME ZONE 'UTC'
+		) AS user_data
 	FROM orders o
 	LEFT JOIN order_items oi ON oi.order_id = o.id
 	LEFT JOIN payments p ON p.order_id = o.id
-	GROUP BY o.id, p.id
+	INNER JOIN users u ON u.id = o.user_id
+	GROUP BY o.id, p.id, u.id
 	ORDER BY o.created_at DESC
 	`
 	rows, err := r.db.Query(ctx, query)
@@ -536,6 +572,8 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 		var order model.Order
 		var itemsJSON []byte
 		var paymentJSON []byte
+		var userJSON []byte
+
 		err := rows.Scan(
 			&order.ID,
 			&order.UserID,
@@ -550,6 +588,7 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 			&order.ExpiresAt,
 			&itemsJSON,
 			&paymentJSON,
+			&userJSON,
 		)
 		if err != nil {
 			return nil, err
@@ -559,14 +598,22 @@ func (r *OrderRepositoryImpl) GetAllWithDetails(ctx context.Context) ([]model.Or
 			return nil, fmt.Errorf("failed to unmarshal items: %w", err)
 		}
 
-		// Unmarshal payment (nullable)
 		if paymentJSON != nil {
 			var payment model.Payment
 			if err := json.Unmarshal(paymentJSON, &payment); err == nil {
 				order.Payment = &payment
 			}
 		}
+
+		if err := json.Unmarshal(userJSON, &order.UserData); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+		}
+
 		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return orders, nil
@@ -589,7 +636,6 @@ func (r *OrderRepositoryImpl) GetByStatus(
 		o.confirmed_at,
 		o.cancelled_at,
 		o.expires_at,
-
 		COALESCE(
 			json_agg(
 				jsonb_build_object(
@@ -607,27 +653,37 @@ func (r *OrderRepositoryImpl) GetByStatus(
 			'[]'
 		) AS items,
 		CASE
-    WHEN p.id IS NOT NULL THEN
-        jsonb_build_object(
-            'id', p.id,
-            'order_id', p.order_id,
-            'status', p.status,
-            'amount', p.amount::float,
-            'proof_image', p.proof_image,
-            'admin_note', p.admin_note,
-            'verified_by', p.verified_by,
-            'created_at', p.created_at AT TIME ZONE 'UTC',
-            'updated_at', p.updated_at AT TIME ZONE 'UTC',
-            'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
-            'verified_at', p.verified_at AT TIME ZONE 'UTC'
-        )
-    ELSE NULL
-END AS payment
+			WHEN p.id IS NOT NULL THEN
+				jsonb_build_object(
+					'id', p.id,
+					'order_id', p.order_id,
+					'status', p.status,
+					'amount', p.amount::float,
+					'proof_image', p.proof_image,
+					'admin_note', p.admin_note,
+					'verified_by', p.verified_by,
+					'created_at', p.created_at AT TIME ZONE 'UTC',
+					'updated_at', p.updated_at AT TIME ZONE 'UTC',
+					'submitted_at', p.submitted_at AT TIME ZONE 'UTC',
+					'verified_at', p.verified_at AT TIME ZONE 'UTC'
+				)
+			ELSE NULL
+		END AS payment,
+		jsonb_build_object(
+			'id', u.id,
+			'full_name', u.full_name,
+			'email', u.email,
+			'phone_number', u.phone_number,
+			'role', u.role,
+			'profile_picture', u.profile_picture,
+			'created_at', u.created_at AT TIME ZONE 'UTC'
+		) AS user_data
 	FROM orders o
 	LEFT JOIN order_items oi ON oi.order_id = o.id
 	LEFT JOIN payments p ON p.order_id = o.id
+	INNER JOIN users u ON u.id = o.user_id
 	WHERE o.status = $1
-	GROUP BY o.id, p.id
+	GROUP BY o.id, p.id, u.id
 	ORDER BY o.created_at DESC
 	`
 	rows, err := r.db.Query(ctx, query, status)
@@ -641,6 +697,8 @@ END AS payment
 		var order model.Order
 		var itemsJSON []byte
 		var paymentJSON []byte
+		var userJSON []byte
+
 		err := rows.Scan(
 			&order.ID,
 			&order.UserID,
@@ -655,6 +713,7 @@ END AS payment
 			&order.ExpiresAt,
 			&itemsJSON,
 			&paymentJSON,
+			&userJSON,
 		)
 		if err != nil {
 			return nil, err
@@ -664,14 +723,22 @@ END AS payment
 			return nil, fmt.Errorf("failed to unmarshal items: %w", err)
 		}
 
-		// Unmarshal payment (nullable)
 		if paymentJSON != nil {
 			var payment model.Payment
 			if err := json.Unmarshal(paymentJSON, &payment); err == nil {
 				order.Payment = &payment
 			}
 		}
+
+		if err := json.Unmarshal(userJSON, &order.UserData); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+		}
+
 		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return orders, nil

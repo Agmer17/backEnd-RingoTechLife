@@ -166,7 +166,7 @@ func (ds *DeviceService) RejectService(ctx context.Context, serviceId uuid.UUID,
 	return nil
 }
 
-func (ds *DeviceService) AcceptServiceByUser(ctx context.Context, serviceId uuid.UUID, userId uuid.UUID) *common.ErrorResponse {
+func (ds *DeviceService) AcceptServiceByUser(ctx context.Context, serviceId uuid.UUID, userId uuid.UUID, notes string) *common.ErrorResponse {
 	oldData, err := ds.DeviceServiceRepo.GetByID(ctx, serviceId)
 	if err != nil {
 		return common.NewErrorResponse(500, "gagal mengambil data di database")
@@ -177,7 +177,7 @@ func (ds *DeviceService) AcceptServiceByUser(ctx context.Context, serviceId uuid
 	}
 
 	expiresAt := time.Now().UTC().Add(12 * time.Hour)
-	newInserted, insErr := ds.OrderService.CreateOrderWithoutProduct(ctx, userId, "Silahkan kirim produk ke a;amat ringotechlife atau bisa datang langsung", *oldData.QuotedPrice, expiresAt)
+	newInserted, insErr := ds.OrderService.CreateOrderWithoutProduct(ctx, userId, notes, *oldData.QuotedPrice, expiresAt)
 	if insErr != nil {
 		return insErr
 	}
