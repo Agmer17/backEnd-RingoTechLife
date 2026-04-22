@@ -36,7 +36,7 @@ func NewApp(ctx context.Context, dbString string, r chi.Router) *App {
 }
 
 func (a *App) Run() {
-	fmt.Println("Server berjalan di port 8080")
-	http.ListenAndServe("0.0.0.0:8080", a.Router)
+	fmt.Println("Server berjalan di port 80")
+	http.ListenAndServe("0.0.0.0:80", a.Router)
 
 }
